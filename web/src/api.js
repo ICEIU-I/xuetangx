@@ -1,0 +1,25 @@
+// 前端 -> 后端 API 封装 + SSE 订阅
+async function j(url, opts) {
+  const r = await fetch(url, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  return data;
+}
+
+export const api = {
+  session: () => j('/api/session'),
+  connect: (cookie) => j('/api/cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),
+  disconnect: () => j('/api/disconnect', { method: 'POST' }),
+  answers: () => j('/api/answers'),
+  status: () => j('/api/status'),
+  run: (targets) => j('/api/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ targets }) }),
+  stop: () => j('/api/stop', { method: 'POST' }),
+  runState: () => j('/api/run-state'),
+};
+
+// SSE：返回一个 EventSource，调用方监听 message
+export function subscribeEvents(onEvent) {
+  const es = new EventSource('/api/events');
+  es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch {} };
+  return es;
+}

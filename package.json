@@ -1,0 +1,18 @@
+{
+  "name": "iceiu-console",
+  "version": "1.0.0",
+  "description": "ICEIU · 学堂在线作业控制台（纯 HTTPS 自动提交）",
+  "private": true,
+  "scripts": {
+    "check": "node scripts/0-check-cookie.js",
+    "submit": "node scripts/3-submit.js",
+    "verify": "node scripts/4-verify.js",
+    "build-web": "cd web && npm install && npm run build",
+    "serve": "node server/index.js",
+    "console": "npm run build-web && npm run serve"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1"
+  }
+}
