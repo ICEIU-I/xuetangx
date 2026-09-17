@@ -22,5 +22,6 @@ module.exports = {
   // —— 目录 ——
   ROOT,
   ANSWERS_DIR: path.join(ROOT, 'data', 'answers'),
+  ANSWER_DB_DIR: path.join(ROOT, 'data', 'answer-db'),
   LOGS_DIR: path.join(ROOT, 'logs'),
 };

@@ -8,6 +8,8 @@ const session = require('./session');
 const runner = require('./runner');
 const video = require('../src/video');
 const videoRunner = require('./video-runner');
+const answerBank = require('../src/answer-bank');
+const answerRunner = require('./answer-runner');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -20,13 +22,31 @@ app.get('/api/session', (req, res) => res.json(session.summary()));
 
 app.post('/api/cookie', async (req, res) => {
   try {
-    if (req.body?.cookie?.trim() !== session.getCookie()) videoRunner.reset();
+    if (req.body?.cookie?.trim() !== session.getCookie()) { videoRunner.reset(); answerRunner.reset(); }
     const user = await session.setCookie(req.body && req.body.cookie);
     res.json({ ok: true, user });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/disconnect', (req, res) => { videoRunner.reset(); session.clear(); res.json({ ok: true }); });
+app.post('/api/disconnect', (req, res) => { videoRunner.reset(); answerRunner.reset(); session.clear(); res.json({ ok: true }); });
+
+// —— 按课程采集答案并写入本地 JSON 数据库 ——
+app.post('/api/answer-bank/run', (req, res) => {
+  try {
+    if (runner.getState().status === 'running' || videoRunner.getState().status === 'running') throw new Error('请先停止其他执行任务');
+    res.status(202).json({ ok: true, state: answerRunner.start({ courseUrl: req.body?.courseUrl, submitUnanswered: req.body?.submitUnanswered }) });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+app.post('/api/answer-bank/stop', (req, res) => res.json({ ok: true, state: answerRunner.stop() }));
+app.get('/api/answer-bank/state', (req, res) => res.json(answerRunner.getState()));
+app.get('/api/answer-bank/:classroomId', async (req, res) => {
+  try {
+    const database = await answerBank.read(req.params.classroomId);
+    if (!database) return res.status(404).json({ error: '该课程尚无本地答案，请先采集' });
+    if (req.query.download === '1') return res.attachment(`answers-${Number(req.params.classroomId)}.json`).json(database);
+    res.json({ database, summary: answerBank.summary(database) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
 
 // —— 视频进度：查询、任务启动与停止 ——
 app.post('/api/video/inspect', async (req, res) => {
@@ -37,7 +57,10 @@ app.post('/api/video/inspect', async (req, res) => {
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 app.post('/api/video/run', (req, res) => {
-  try { res.status(202).json({ ok: true, state: videoRunner.start({ courseUrl: req.body?.courseUrl, concurrency: req.body?.concurrency, url: req.body?.url, durationSeconds: req.body?.durationSeconds }) }); }
+  try {
+    if (answerRunner.getState().status === 'running') throw new Error('请先停止答案采集任务');
+    res.status(202).json({ ok: true, state: videoRunner.start({ courseUrl: req.body?.courseUrl, concurrency: req.body?.concurrency, url: req.body?.url, durationSeconds: req.body?.durationSeconds }) });
+  }
   catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 app.post('/api/video/stop', (req, res) => res.json({ ok: true, state: videoRunner.stop() }));
@@ -93,6 +116,7 @@ app.get('/api/status', async (req, res) => {
 // —— 跑作业 ——
 app.post('/api/run', async (req, res) => {
   try {
+    if (answerRunner.getState().status === 'running') return res.status(400).json({ ok: false, error: '请先停止答案采集任务' });
     const targets = (req.body && req.body.targets) || null;
     runner.startRun(targets).catch((e) => console.error('[startRun error]', e)); // 异步跑，事件走 SSE
     res.json({ ok: true });
@@ -105,11 +129,12 @@ app.get('/api/run-state', (req, res) => res.json(runner.getState()));
 app.get('/api/events', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
   res.flushHeaders();
-  res.write(`data: ${JSON.stringify({ type: 'hello', ...runner.getState(), video: videoRunner.getState() })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'hello', ...runner.getState(), video: videoRunner.getState(), answerBank: answerRunner.getState() })}\n\n`);
   const off = runner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
   const offVideo = videoRunner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
+  const offAnswers = answerRunner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
   const ping = setInterval(() => res.write(': ping\n\n'), 15000);
-  req.on('close', () => { off(); offVideo(); clearInterval(ping); });
+  req.on('close', () => { off(); offVideo(); offAnswers(); clearInterval(ping); });
 });
 
 // —— 静态前端 ——

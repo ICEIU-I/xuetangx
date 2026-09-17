@@ -17,7 +17,7 @@ function parseCourseUrl(value) {
   try { url = new URL(value); } catch { throw new Error('请粘贴完整的学堂在线视频学习页链接'); }
   if (url.protocol !== 'https:' || !['www.xuetangx.com', 'xuetangx.com'].includes(url.hostname)
     || url.port || url.username || url.password) throw new Error('仅支持学堂在线 HTTPS 视频学习页链接');
-  const match = /^\/learn\/space\/([^/]+)\/([^/]+)\/(\d+)(?:\/video\/\d+)?\/?$/.exec(url.pathname);
+  const match = /^\/learn\/space\/([^/]+)\/([^/]+)\/(\d+)(?:\/(?:video|exercise|exam)\/\d+)?\/?$/.exec(url.pathname);
   if (!match) throw new Error('请使用 /learn/space/…/班级ID 开头的课程或视频学习页链接');
   return {
     url: `https://www.xuetangx.com/learn/space/${match[1]}/${match[2]}/${match[3]}`,

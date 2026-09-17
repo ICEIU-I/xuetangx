@@ -13,3 +13,6 @@ logs/
 # 答案数据（用户自行生成，不随仓库分发）
 data/answers/*.json
 !data/answers/.gitkeep
+
+# 本地答案数据库（包含课程题目与采集结果）
+data/answer-db/
