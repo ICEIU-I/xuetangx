@@ -23,7 +23,12 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   const quota = createQuota({ storage: createStorage(path.join(directory, 'quota')), now, ...quotaOptions });
   const broker = createBroker({ accounts, quota, ...(transport ? { transport } : {}), interval, now });
   const jobs = new Map(), actors = new Map(), preparing = new Map(), collecting = new Map(), submissions = new Map();
-  const exits = new Set(), bankUpdates = new Set();
+  const exits = new Set(), bankUpdates = new Set(), settling = new Map();
+  function beginOperation(id) {
+    let finish; const promise = new Promise(resolve => { finish = resolve; });
+    if (!settling.has(id)) settling.set(id, new Set()); settling.get(id).add(promise);
+    return () => { finish(); settling.get(id)?.delete(promise); if (!settling.get(id)?.size) settling.delete(id); };
+  }
   const catalog = createCatalog({ request: (account, method, endpoint, body, options) => call(account, method, endpoint, body, options) });
   const bank = createBank({ directory: bankDirectory }); let closed = false;
   const ready = jobsStore.list().then(values => {
@@ -70,7 +75,18 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     }
   }
   function actorKey(job, kind) { return `${job.id}:${kind}`; }
-  function send(actor, value) { if (actor?.child?.connected) actor.child.send(value); }
+  function log(job, kind, message) {
+    if (!message) return;
+    job.logs ||= []; const last = job.logs.at(-1);
+    if (last?.kind === kind && last.message === message) return;
+    job.logs.push({ ts: now(), kind, message }); if (job.logs.length > 200) job.logs.splice(0, job.logs.length - 200);
+  }
+  function send(actor, value) {
+    if (!actor?.child?.connected) return;
+    if (!actor.initialized && ['answer-ready', 'answers-complete'].includes(value.type)) { (actor.mailbox ||= []).push(value); return; }
+    actor.child.send(value);
+    if (value.type === 'init') { actor.initialized = true; for (const queued of actor.mailbox || []) actor.child.send(queued); actor.mailbox = []; }
+  }
   async function stopActors(job, kinds, status) {
     const waits = [];
     for (const kind of kinds) {
@@ -78,9 +94,12 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
       const actor = actors.get(actorKey(job, kind));
       if (actor) { actor.stopping = true; actor.controller.abort(); send(actor, { type: 'cancel' }); waits.push(actor.exited); }
     }
-    const controller = preparing.get(job.id); if (controller && kinds.some(kind => kind !== 'collector')) controller.abort();
+    const primaryKinds = job.requested.filter(kind => kind !== 'collector');
+    const controller = preparing.get(job.id), stoppedPreparation = !!controller && primaryKinds.every(kind => kinds.includes(kind));
+    if (stoppedPreparation) controller.abort();
     if (kinds.includes('collector')) collecting.get(job.id)?.abort();
     await publish(job); await Promise.allSettled(waits);
+    if (job.control || stoppedPreparation) await Promise.allSettled([...(settling.get(job.id) || [])]);
   }
   async function submitQuestion(job, actor, args) {
     const exercise = actor.input.exercises.find(item => item.leafId === args.leafId);
@@ -133,6 +152,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   }
   function waiting(job, actor, state) {
     const module = job.modules[actor.kind]; module.status = 'waiting_quota'; module.readyAt = state.readyAt; module.message = '本周期提交额度已用完，等待下一周期';
+    log(job, actor.kind, module.message);
     publish(job).catch(() => {});
   }
   function allowedRequest(actor, args) {
@@ -194,10 +214,11 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
         const operation = handleRpc(job, actor, message.method, message.args).then(value => send(actor, { type: 'rpc-result', requestId: message.requestId, value }), error => send(actor, { type: 'rpc-result', requestId: message.requestId, error: { message: error.message, code: error.code } }));
         actor.operations.add(operation); operation.finally(() => actor.operations.delete(operation));
       }
-      if (message.type === 'progress' && !actor.stopping) { Object.assign(job.modules[kind], message.data, { status: message.data.stage === 'waiting_answers' ? 'waiting_answers' : 'running' }); publish(job).catch(() => {}); }
+      if (message.type === 'progress' && !actor.stopping) { Object.assign(job.modules[kind], message.data, { status: message.data.stage === 'waiting_answers' ? 'waiting_answers' : 'running' }); log(job, kind, message.data.message); publish(job).catch(() => {}); }
       if (message.type === 'result' && !actor.stopping) {
         actor.finalized = true;
         Object.assign(job.modules[kind], message.result, { status: message.result.failed || message.result.wrongExisting ? 'partial' : 'done', message: message.result.failed ? '存在未完成项' : '已回查完成' });
+        log(job, kind, job.modules[kind].message);
         if (kind === 'collector') send(actors.get(actorKey(job, 'homework')), { type: 'answers-complete' });
         publish(job).catch(() => {});
       }
@@ -205,6 +226,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
         actor.finalized = true;
         job.modules[kind].status = message.error.code === 'ACCOUNT_REQUIRED' ? 'waiting_account' : 'blocked';
         job.modules[kind].message = message.error.message;
+        log(job, kind, message.error.message);
         if (kind === 'collector' && message.error.code !== 'ACCOUNT_REQUIRED') send(actors.get(actorKey(job, 'homework')), { type: 'answers-complete' });
         publish(job).catch(() => {});
       }
@@ -224,7 +246,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
       exited(); exits.delete(actor.exited);
     });
     actor.killTimer = null;
-    actor.controller.signal.addEventListener('abort', () => { send(actor, { type: 'cancel' }); actor.killTimer = setTimeout(() => { if (child.connected) child.kill('SIGTERM'); }, 2000); actor.killTimer.unref(); });
+    actor.controller.signal.addEventListener('abort', () => { send(actor, { type: 'cancel' }); actor.killTimer = setTimeout(() => { if (child.exitCode == null) child.kill('SIGKILL'); }, 2000); actor.killTimer.unref(); });
     child.once('exit', () => clearTimeout(actor.killTimer));
   }
   async function refreshCoverage(job) {
@@ -236,6 +258,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   async function launchCollector(job, restart = 0) {
     if (collecting.has(job.id) || actors.has(actorKey(job, 'collector')) || job.control) return;
     const controller = new AbortController(); collecting.set(job.id, controller);
+    const finishOperation = beginOperation(job.id);
     try {
       const coverage = await refreshCoverage(job);
       if (!coverage.missing.length) { job.modules.collector = { status: 'done', role: 'test', total: 0, captured: 0, message: '已有完整题库，无需采集' }; send(actors.get(actorKey(job, 'homework')), { type: 'answers-complete' }); return; }
@@ -250,17 +273,18 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
       }
       spawn(job, 'collector', { course: job.course, exercises: testInventory.exercises, missing: coverage.missing, submitUnanswered: job.submitUnanswered }, 'test', restart);
     } catch (error) {
-      if (!controller.signal.aborted) job.modules.collector = { status: error.code === 'ENROLLMENT_REQUIRED' ? 'waiting_enrollment' : error.code === 'ACCOUNT_REQUIRED' ? 'waiting_account' : 'blocked', role: 'test', message: error.message };
-    } finally { collecting.delete(job.id); await publish(job); }
+      if (!controller.signal.aborted) { job.modules.collector = { status: error.code === 'ENROLLMENT_REQUIRED' ? 'waiting_enrollment' : error.code === 'ACCOUNT_REQUIRED' ? 'waiting_account' : 'blocked', role: 'test', message: error.message }; log(job, 'collector', error.message); }
+    } finally { collecting.delete(job.id); try { await publish(job); } finally { finishOperation(); } }
   }
   async function prepare(job) {
     if (preparing.has(job.id) || job.control) return;
     const controller = new AbortController(); preparing.set(job.id, controller);
+    const finishOperation = beginOperation(job.id);
     try {
       const account = { role: 'primary', userId: job.primaryId }; accounts.get('primary', job.primaryId);
       const inventory = await catalog.discover(account, job.course.url, controller.signal); job.course = inventory.course; job.inventory = inventory;
       controller.signal.throwIfAborted();
-      for (const kind of ['video', 'article', 'discussion']) if (job.requested.includes(kind) && !actors.has(actorKey(job, kind))) {
+      for (const kind of ['video', 'article', 'discussion']) if (job.requested.includes(kind) && !actors.has(actorKey(job, kind)) && !['paused', 'stopped'].includes(job.modules[kind].status)) {
         const units = inventory.units.filter(unit => unit.kind === kind && (kind !== 'video' || !job.unitId || unit.id === job.unitId));
         if (kind === 'video' && job.unitId && !units.length) throw new Error('所选视频不属于该课程');
         spawn(job, kind, { course: job.course, units });
@@ -277,7 +301,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
           job.modules.collector = { status: coverage.missing.length ? 'partial' : 'done', role: 'primary', total: job.coverage.total, captured: job.coverage.captured, failed: job.coverage.missing, message: '已读取并保存正式账号公开答案，未提交作答' };
           await publish(job); return;
         }
-        if (job.requested.includes('homework') && !actors.has(actorKey(job, 'homework'))) spawn(job, 'homework', { course: job.course, exercises: inventory.exercises, ready: coverage.ready, producerFinished: coverage.missing.length === 0 });
+        if (job.requested.includes('homework') && !actors.has(actorKey(job, 'homework')) && !['paused', 'stopped'].includes(job.modules.homework.status)) spawn(job, 'homework', { course: job.course, exercises: inventory.exercises, ready: coverage.ready, producerFinished: coverage.missing.length === 0 });
         if (coverage.missing.length || job.requested.includes('collector')) { job.modules.collector ||= { status: 'queued', role: 'test', message: '准备补齐题库' }; await launchCollector(job); }
       }
       await publish(job);
@@ -286,7 +310,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
         for (const kind of job.requested) if (!actors.has(actorKey(job, kind))) Object.assign(job.modules[kind], { status: error.code === 'ACCOUNT_REQUIRED' ? 'waiting_account' : 'blocked', message: error.message });
         await publish(job);
       }
-    } finally { preparing.delete(job.id); }
+    } finally { preparing.delete(job.id); finishOperation(); }
   }
   async function restartModule(job, kind, restart = 0) {
     if (kind === 'collector') return launchCollector(job, restart);
@@ -313,7 +337,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
       return view(job);
     }
     job = { id: randomUUID(), course: target, primaryId: primary.userId, concurrency, submitUnanswered, targets: targets || null, unitId: unitId || null,
-      requested: [...new Set(modules)], modules: {}, status: 'running', control: null, createdAt: now(), updatedAt: now(), coverage: null };
+      requested: [...new Set(modules)], modules: {}, logs: [], status: 'running', control: null, createdAt: now(), updatedAt: now(), coverage: null };
     for (const kind of job.requested) job.modules[kind] = { status: 'queued', message: '等待扫描课程' };
     jobs.set(job.id, job); await publish(job); prepare(job).catch(() => {}); return view(job);
   }
@@ -323,6 +347,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     if (kind && !KINDS.includes(kind)) throw new Error('模块无效');
     if (['pause', 'stop'].includes(action)) {
       const status = action === 'pause' ? 'paused' : 'stopped'; if (!kind) job.control = status;
+      log(job, kind || 'course', status === 'paused' ? '任务已暂停' : '任务已停止');
       await stopActors(job, kind ? [kind] : Object.keys(job.modules), status);
     } else if (['resume', 'retry'].includes(action)) {
       job.control = null;
@@ -343,6 +368,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   });
   const offQuota = broker.onQuota(state => events.emit('event', { type: 'quota', ...state, ts: now() }));
   const offAccounts = accounts.onChange(change => {
+    events.emit('event', { type: 'accounts', accounts: { primary: accounts.summary('primary'), test: accounts.summary('test') }, ts: now() });
     for (const job of jobs.values()) {
       if (job.control) continue;
       if (change.role === 'test') {
@@ -362,6 +388,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     preparing.forEach(controller => controller.abort()); collecting.forEach(controller => controller.abort());
     await Promise.allSettled([...jobs.values()].filter(job => Object.keys(job.modules).some(kind => actors.has(actorKey(job, kind)))).map(job => { job.control = 'paused'; return stopActors(job, Object.keys(job.modules), 'paused'); }));
     await Promise.allSettled([...exits, ...bankUpdates]);
+    await Promise.allSettled([...settling.values()].flatMap(set => [...set]));
     await jobsStore.flush(); await effects.flush();
     broker.close();
   }

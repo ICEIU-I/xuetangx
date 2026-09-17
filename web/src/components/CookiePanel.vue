@@ -33,14 +33,14 @@ async function disconnect() {
 
 <template>
   <div class="panel">
-    <div class="panel-title">登录态 / SESSION</div>
+    <div class="panel-title">正式账号 / PRIMARY</div>
 
     <div v-if="session.connected" class="row">
       <span class="tag ok"><span class="dot"></span>CONNECTED</span>
       <span class="dim">user_id</span>
       <span class="accent mono-num">{{ session.user?.user_id || session.user?.id }}</span>
       <span v-if="session.user?.school_number" class="dim">学号 {{ session.user.school_number }}</span>
-      <span class="tag" style="margin-left:4px">已记住于本浏览器</span>
+      <span class="tag" style="margin-left:4px">当前正式账号</span>
       <span class="spacer"></span>
       <button class="danger" @click="disconnect">断开并忘记</button>
     </div>

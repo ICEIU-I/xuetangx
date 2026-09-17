@@ -17,7 +17,8 @@ function createQuota({ storage, now = Date.now, limit = 20, period = 60000, guar
   async function snapshot(userId) {
     const data = await load(userId), time = now();
     const used = data.windowStart != null && time >= data.windowStart + period + guard ? 0 : data.used;
-    return { userId, limit, used, remaining: limit - used, windowStart: data.windowStart, readyAt: availableAt(data), resetsAt: data.windowStart == null ? null : data.windowStart + period + guard };
+    const readyAt = availableAt(data, time);
+    return { userId, limit, used, remaining: limit - used, windowStart: data.windowStart, readyAt, blocked: readyAt > time, resetsAt: data.windowStart == null ? null : data.windowStart + period + guard };
   }
   async function reserve(userId) {
     let allowed = false;

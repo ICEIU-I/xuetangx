@@ -8,6 +8,11 @@ async function j(url, opts) {
 
 export const api = {
   session: () => j('/api/session'),
+  workflowState: () => j('/api/workflow/state'),
+  workflowStart: (courseUrl, concurrency = 3) => j('/api/workflow/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
+  workflowControl: (id, action) => j(`/api/workflow/${encodeURIComponent(id)}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
+  testConnect: (cookie) => j('/api/test-cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),
+  testDisconnect: () => j('/api/test-disconnect', { method: 'POST' }),
   connect: (cookie) => j('/api/cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),
   disconnect: () => j('/api/disconnect', { method: 'POST' }),
   answers: () => j('/api/answers'),

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue';
+import { ref, reactive, watch, onMounted, onUnmounted } from 'vue';
 import { api, subscribeEvents } from './api';
 import CookiePanel from './components/CookiePanel.vue';
 import StatBar from './components/StatBar.vue';
@@ -9,6 +9,8 @@ import VideoPanel from './components/VideoPanel.vue';
 import AnswerPanel from './components/AnswerPanel.vue';
 import ArticlePanel from './components/ArticlePanel.vue';
 import DiscussionPanel from './components/DiscussionPanel.vue';
+import WorkflowPanel from './components/WorkflowPanel.vue';
+const advancedOpen = ref(false);
 
 const session = reactive({ connected: false, user: null });
 const homeworkCourses = ref([]), homeworkUrl = ref(''), homeworkConcurrency = ref(3);
@@ -58,6 +60,9 @@ async function refreshSession() {
 async function onConnected(user) {
   session.connected = true;
   session.user = user;
+  if (advancedOpen.value) await loadAdvanced();
+}
+async function loadAdvanced() {
   try {
     const result = await api.videoCourses();
     homeworkCourses.value = result.courses;
@@ -65,6 +70,7 @@ async function onConnected(user) {
     await refreshStatus();
   } catch (error) { pushLog('fail', '课程加载失败', null, error.message); }
 }
+watch(advancedOpen, open => { if (open && session.connected) loadAdvanced(); });
 function onDisconnected() {
   session.connected = false; session.user = null;
   homeworkCourses.value = []; homeworkUrl.value = ''; selected.value = [];
@@ -106,6 +112,7 @@ function clearLogs() { logs.value = []; }
 
 // 处理 SSE 事件
 function handleEvent(evt) {
+  if (evt.type === 'accounts' && !evt.accounts.primary.connected) { onDisconnected(); return; }
   if (evt.type === 'reset') { Object.assign(runState, evt); return; }
   if (evt.type === 'hello') Object.assign(runState, pick(evt));
   if (evt.type === 'discussion') { Object.assign(discussionState, evt); return; }
@@ -148,21 +155,13 @@ function bumpSection(name) {
 onMounted(async () => {
   startTyping();
   es = subscribeEvents(handleEvent);
-  // 若本浏览器记住了 cookie，自动连接；否则保持未连接、显示输入框
-  const saved = localStorage.getItem('xt_console_cookie');
-  if (saved) {
-    try {
-      const r = await api.connect(saved);
-      await onConnected(r.user);
-      return;
-    } catch {
-      localStorage.removeItem('xt_console_cookie'); // 记住的失效了，清掉
-    }
-  }
-  // 未记住或失效：确保后端无残留 session
-  try { await api.disconnect(); } catch {}
-  session.connected = false;
-  session.user = null;
+  try {
+    const current = await api.session();
+    if (current.connected) { await onConnected(current.user); return; }
+    const saved = localStorage.getItem('xt_console_cookie');
+    if (saved) { const result = await api.connect(saved); await onConnected(result.user); }
+  } catch (error) { pushLog('fail', '连接失败', null, error.message); }
+
 });
 onUnmounted(() => { if (es) es.close(); if (typeTimer) clearTimeout(typeTimer); });
 </script>
@@ -173,15 +172,19 @@ onUnmounted(() => { if (es) es.close(); if (typeTimer) clearTimeout(typeTimer); 
       <div class="brand-title">{{ typed }}<span class="caret">▎</span></div>
     </div>
     <div class="row" style="gap:8px">
-      <StatusGrid
+      <StatusGrid v-if="advancedOpen"
         :sections="sections" :selected="selected" :loading="loadingStatus" :connected="session.connected"
         @toggle="toggleSelect" @refresh="refreshStatus"
       />
     </div>
   </header>
 
-  <StatBar :stats="stats" :runState="runState" />
   <CookiePanel :session="session" @connected="onConnected" @disconnected="onDisconnected" />
+  <WorkflowPanel :session="session" />
+  <details class="advanced" @toggle="advancedOpen = $event.target.open">
+    <summary>高级操作：单独运行视频、图文、讨论、采集或答题</summary>
+    <div v-if="advancedOpen">
+  <StatBar :stats="stats" :runState="runState" />
   <VideoPanel :session="session" :task="videoState" />
   <ArticlePanel :session="session" :task="articleState" />
   <DiscussionPanel :session="session" :task="discussionState" />
@@ -192,10 +195,12 @@ onUnmounted(() => { if (es) es.close(); if (typeTimer) clearTimeout(typeTimer); 
     :runState="runState" :logs="logs" :connected="session.connected" :selectedCount="selected.length"
     @start="startRun" @stop="stopRun" @clear="clearLogs"
   />
-
+    </div>
+  </details>
 </template>
 
 <style scoped>
+.advanced > summary { cursor: pointer; margin: 20px 0; color: var(--text-dim); }
 .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .brand { display: flex; align-items: center; }
 .brand-title {

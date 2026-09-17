@@ -11,31 +11,48 @@ const problem = id => ({ problem_id: id, index: id, content: { Type: 'SingleChoi
 async function until(predicate, timeout = 6000) {
   const start = Date.now(); while (!await predicate()) { if (Date.now() - start > timeout) throw Error('等待测试条件超时'); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
-async function fixture(t, { withTest = false, enrolledTest = true, quotaLimit = 20 } = {}) {
+async function fixture(t, { withTest = false, enrolledTest = true, quotaLimit = 20, pendingMedia = false, uncertainSubmission = false, slowDiscovery = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-'));
   const accounts = createAccounts({ authenticate: async cookie => ({ user_id: Number(cookie) }) });
   await accounts.connect('primary', '1'); if (withTest) await accounts.connect('test', '2');
   const done = { 1: new Map(), 2: new Map() }, posts = [], reads = [];
+  const completedMedia = new Set(pendingMedia ? [] : [31, 32, 33]);
+  let uncertain = uncertainSubmission;
   const response = data => ({ status: 200, json: { success: true, data } });
   const transport = {
     async get(endpoint, cookie) {
       const userId = Number(cookie); reads.push({ endpoint, userId });
+      if (slowDiscovery && endpoint.includes('/user-courses/')) await new Promise(resolve => setTimeout(resolve, 20));
       if (endpoint.includes('/user-courses/')) return response({ pages: 1, product_list: userId === 2 && !enrolledTest ? [] : [{ classroom_id: 12, sign: 's', course_sign: 's', name: '课程' }] });
       if (endpoint.includes('/course/chapter')) return response({ course_chapter: [{ id: 31, leaf_type: 0, name: '视频' }, { id: 32, leaf_type: 3, name: '图文' }, { id: 33, leaf_type: 4, name: '讨论' }, { id: 34, leaf_type: 6, name: '作业' }] });
-      if (endpoint.includes('/course/schedule')) return response({ leaf_schedules: { 31: 1, 32: 1, 33: 1 }, total_schedule: 0.75 });
+      if (endpoint.includes('/course/schedule')) return response({ leaf_schedules: Object.fromEntries([...completedMedia].map(id => [id, 1])), total_schedule: completedMedia.size / 4 });
+      const media = /leaf_info\/12\/(31|32|33)\//.exec(endpoint);
+      if (media) { const id = Number(media[1]); return response({ id, classroom_id: 12, leaf_type: { 31: 0, 32: 3, 33: 4 }[id], course_id: 10, user_id: userId, sku_id: 78, finish: completedMedia.has(id), content_info: { media: { ccid: 'test-cc', type: 'video', duration: 12 } } }); }
+      if (endpoint.includes('/get_video_watch_progress/')) return response({ 31: { completed: completedMedia.has(31) ? 1 : 0, video_length: 12 } });
+      if (endpoint.includes('/service/playurl/')) return response({ duration: 12, sources: { quality10: ['https://cdn.example.test/video.mp4'] } });
+      if (endpoint.includes('/user_article_finish/32/')) { completedMedia.add(32); return response({}); }
+      if (endpoint.includes('/forum/unit/discussion/')) return response({ id: 133, classroom_id: 12, chapter_id: 33, user_id: 77, user_comment_num: completedMedia.has(33) ? 1 : 0 });
       if (endpoint.includes('/leaf_info/12/34/')) return response({ id: 34, classroom_id: 12, leaf_type: 6, user_id: userId, sku_id: userId === 1 ? 78 : 79, content_info: { leaf_type_id: 56 } });
       if (endpoint.includes('/get_exercise_list/56/')) return response({ problems: [101, 102, 103].map(id => ({ ...problem(id), user: done[userId].get(id) || { my_count: 0, is_show_answer: false } })) });
       throw Error('Unexpected GET: ' + endpoint);
     },
     async post(endpoint, body, cookie) {
+      if (endpoint === '/video-log/heartbeat/') { assert.ok(body.heart_data.every(item => item.u === 1 && item.classroomid === '12')); completedMedia.add(31); return response({}); }
+      if (endpoint.startsWith('/api/v1/lms/forum/comment/')) { assert.equal(body.content.text, '1'); completedMedia.add(33); return response({ data: { id: 933 } }); }
+      if (endpoint === '/api/v1/lms/learn/chapter/schedule') return response({ leaf_schedule: completedMedia.has(body.leaf_id) ? 1 : 0 });
       assert.equal(endpoint, '/api/v1/lms/exercise/problem_apply/'); const userId = Number(cookie);
       posts.push({ userId, body, time: Date.now() });
       const correct = body.answer[0] === 'B';
       const data = { my_count: 1, is_show_answer: true, answer: ['B'], my_answer: body.answer, is_right: correct, is_correct: correct };
-      done[userId].set(body.problem_id, data); return response(data);
+      done[userId].set(body.problem_id, data);
+      if (uncertain) { uncertain = false; throw Object.assign(Error('connection lost after acceptance'), { code: 'ECONNRESET', connectionEstablished: true }); }
+      return response(data);
     },
   };
-  const runtime = createRuntime({ directory: path.join(root, 'runtime'), bankDirectory: path.join(root, 'bank'), accounts, transport, interval: 0, quotaOptions: { limit: quotaLimit, period: 60, guard: 1 } });
+  const runtime = createRuntime({ directory: path.join(root, 'runtime'), bankDirectory: path.join(root, 'bank'), accounts, transport, interval: 0, quotaOptions: { limit: quotaLimit, period: 60, guard: 1 }, forkImpl(file, args, options) {
+    assert.ok(!('COOKIE' in options.env)); assert.ok(!('TEST_COOKIE' in options.env));
+    return require('node:child_process').fork(file, args, options);
+  } });
   await runtime.ready;
   t.after(async () => { await runtime.close(); await fs.rm(root, { recursive: true, force: true }); });
   return { root, accounts, runtime, posts, reads, done };
@@ -121,4 +138,32 @@ test('production HTTP endpoints use the same job registry and separate test-acco
   const state = await (await fetch(base + '/api/workflow/state')).json();
   assert.equal(state.accounts.primary.userId, 1); assert.equal(state.accounts.test.userId, 2);
   assert.equal(state.jobs[0].coverage.captured, 3);
+});
+
+test('all four real worker types finish pending units through the master request gateway', async t => {
+  const { runtime, posts } = await fixture(t, { withTest: true, pendingMedia: true, uncertainSubmission: true });
+  const job = await runtime.start({ courseUrl });
+  await until(async () => ['done', 'partial'].includes((await runtime.get(job.id)).status));
+  const state = await runtime.get(job.id);
+  assert.equal(state.status, 'done', JSON.stringify(state.modules));
+  for (const kind of ['video', 'article', 'discussion']) assert.equal(state.modules[kind].completed, 1);
+  assert.equal(posts.length, 6, 'the accepted but disconnected submission must not be resent');
+  assert.equal(state.modules.homework.completed, 3);
+});
+
+test('pause during discovery settles preparation, and resume starts a fresh scan', async t => {
+  const { runtime } = await fixture(t, { withTest: true, slowDiscovery: true });
+  const job = await runtime.start({ courseUrl });
+  await runtime.control(job.id, 'pause'); assert.equal((await runtime.get(job.id)).status, 'paused');
+  await runtime.control(job.id, 'resume');
+  await until(async () => (await runtime.get(job.id)).status === 'done');
+});
+
+test('stopping one module during discovery does not cancel initialization of the others', async t => {
+  const { runtime } = await fixture(t, { withTest: true, slowDiscovery: true });
+  const job = await runtime.start({ courseUrl });
+  await runtime.control(job.id, 'stop', 'video');
+  await until(async () => (await runtime.get(job.id)).modules.homework.status === 'done');
+  const result = await runtime.get(job.id);
+  assert.equal(result.modules.video.status, 'stopped'); assert.equal(result.modules.article.status, 'done');
 });
