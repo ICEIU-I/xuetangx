@@ -9,7 +9,7 @@ import VideoPanel from './components/VideoPanel.vue';
 import AnswerPanel from './components/AnswerPanel.vue';
 import ArticlePanel from './components/ArticlePanel.vue';
 import DiscussionPanel from './components/DiscussionPanel.vue';
-import WorkflowPanel from './components/WorkflowPanel.vue';
+import WorkflowPanel from './components/workflow/WorkflowPanel.vue';
 const advancedOpen = ref(false);
 
 const session = reactive({ connected: false, user: null });

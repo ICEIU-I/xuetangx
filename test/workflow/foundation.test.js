@@ -3,10 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const { createStorage } = require('../server/workflow/storage');
-const { createAccounts } = require('../server/workflow/accounts');
-const { createQuota } = require('../server/workflow/quota');
-const { createBroker, SUBMIT } = require('../server/workflow/broker');
+const { createStorage } = require('../../server/workflow/storage');
+const { createAccounts } = require('../../server/workflow/accounts');
+const { createQuota } = require('../../server/workflow/quota');
+const { createBroker, SUBMIT } = require('../../server/workflow/broker');
 
 async function directory(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-foundation-'));

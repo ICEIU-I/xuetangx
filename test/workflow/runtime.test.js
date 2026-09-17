@@ -3,9 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const { createRuntime } = require('../server/workflow/runtime');
-const { createAccounts } = require('../server/workflow/accounts');
-const { createStorage } = require('../server/workflow/storage');
+const { createRuntime } = require('../../server/workflow/runtime');
+const { createAccounts } = require('../../server/workflow/accounts');
+const { createStorage } = require('../../server/workflow/storage');
 const courseUrl = 'https://www.xuetangx.com/learn/space/s/s/12';
 const problem = id => ({ problem_id: id, index: id, content: { Type: 'SingleChoice', Body: `题目${id}`, Options: [{ key: 'A', value: 'a' }, { key: 'B', value: 'b' }], Version: 'v1' } });
 async function until(predicate, timeout = 6000) {
@@ -122,7 +122,7 @@ test('worker crash restarts only that module and resume after restart keeps dura
 });
 
 test('production HTTP endpoints use the same job registry and separate test-account connection', async t => {
-  const { createWorkflowApp } = require('../server/workflow/app');
+  const { createWorkflowApp } = require('../../server/workflow/app');
   const { once } = require('node:events');
   const { runtime } = await fixture(t);
   const app = createWorkflowApp({ runtime }), server = app.listen(0, '127.0.0.1'); await once(server, 'listening');

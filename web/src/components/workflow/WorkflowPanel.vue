@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { api, subscribeEvents } from '../api';
+import { api, subscribeEvents } from '../../api';
 const props = defineProps({ session: Object });
 const courses = ref([]), courseUrl = ref(''), concurrency = ref(3), jobs = ref([]), quotas = ref({});
 const testAccount = ref({ connected: false }), testCookie = ref(''), testOpen = ref(false);

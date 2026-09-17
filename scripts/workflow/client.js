@@ -1,7 +1,7 @@
 const { setTimeout: sleep } = require('node:timers/promises');
-const { COOKIE } = require('../config');
-const { parseCourseUrl } = require('../src/video');
-const { concurrency } = require('../src/tasks');
+const { COOKIE } = require('../../config');
+const { parseCourseUrl } = require('../../src/video');
+const { concurrency } = require('../../src/tasks');
 async function main(mode) {
   const args = process.argv.slice(2), urls = args.filter(value => !value.startsWith('--'));
   const allowed = new Set(['--complete', '--course', '--submit-unanswered']);
