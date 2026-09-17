@@ -10,8 +10,11 @@ import (
 )
 
 func Password(value string) (string, error) {
-	if len(value) < 12 || len(value) > 256 {
-		return "", fmt.Errorf("密码须为 12–256 字节")
+	if value == "" {
+		return "", fmt.Errorf("密码不能为空")
+	}
+	if len(value) > 256 {
+		return "", fmt.Errorf("密码不能超过 256 字节")
 	}
 	salt := make([]byte, 16)
 	if _, e := rand.Read(salt); e != nil {

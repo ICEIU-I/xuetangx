@@ -13,31 +13,31 @@ func TestDirectRegistrationAndPasswordChange(t *testing.T) {
 	a := auth.New(db, nil, "https://example.test")
 	a.RequireEmailVerification = false
 	ctx := context.Background()
-	if e := a.Register(ctx, "direct@example.test", "original-password-123"); e != nil {
+	if e := a.Register(ctx, "direct@example.test", "1"); e != nil {
 		t.Fatal(e)
 	}
 	var mailCount int
 	if e := db.Pool.QueryRow(ctx, "SELECT count(*) FROM mail_outbox").Scan(&mailCount); e != nil || mailCount != 0 {
 		t.Fatal(e, mailCount)
 	}
-	l, e := a.Login(ctx, "direct@example.test", "original-password-123")
+	l, e := a.Login(ctx, "direct@example.test", "1")
 	if e != nil {
 		t.Fatal(e)
 	}
 	if l.User.Admin {
 		t.Fatal("registration granted admin")
 	}
-	if e = a.Register(ctx, "direct@example.test", "replacement-password-123"); fault.Code(e) != "EMAIL_REGISTERED" {
+	if e = a.Register(ctx, "direct@example.test", "2"); fault.Code(e) != "EMAIL_REGISTERED" {
 		t.Fatal(e)
 	}
-	if e = a.ChangePassword(ctx, l.User.ID, "wrong-password", "replacement-password-123"); e == nil {
+	if e = a.ChangePassword(ctx, l.User.ID, "wrong-password", "2"); e == nil {
 		t.Fatal("wrong password accepted")
 	}
 	token, e := a.CreateToken(ctx, l.User.ID, "cli")
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = a.ChangePassword(ctx, l.User.ID, "original-password-123", "replacement-password-123"); e != nil {
+	if e = a.ChangePassword(ctx, l.User.ID, "1", "2"); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = a.Authenticate(ctx, l.Token, false); e == nil {
@@ -46,7 +46,7 @@ func TestDirectRegistrationAndPasswordChange(t *testing.T) {
 	if _, e = a.Authenticate(ctx, token, true); e == nil {
 		t.Fatal("CLI token not revoked")
 	}
-	if _, e = a.Login(ctx, "direct@example.test", "replacement-password-123"); e != nil {
+	if _, e = a.Login(ctx, "direct@example.test", "2"); e != nil {
 		t.Fatal(e)
 	}
 }

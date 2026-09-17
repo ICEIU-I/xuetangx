@@ -27,7 +27,7 @@ onMounted(async () => { const hash = new URLSearchParams(location.hash.slice(1))
     <section class="panel auth-card"><h2>{{ title }}</h2><p class="dim">{{ mode === 'register' ? (config.emailVerificationRequired?'验证邮箱后即可连接平台账号。':'注册后即可登录，无需邮箱验证码。') : '登录后继续你的课程任务。' }}</p>
       <form :key="mode" @submit.prevent="submit">
         <label v-if="!['reset','verify'].includes(mode)" for="auth-email">邮箱<input id="auth-email" name="email" v-model.trim="email" type="email" inputmode="email" :autocomplete="mode === 'login' ? 'username' : 'email'" required></label>
-        <label v-if="['login','register','reset'].includes(mode)" for="auth-password">密码<input id="auth-password" name="password" aria-label="密码" v-model="password" type="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" :minlength="mode === 'login' ? 1 : 12" maxlength="256" required><small v-if="mode !== 'login'" class="dim">至少 12 个字符</small></label>
+        <label v-if="['login','register','reset'].includes(mode)" for="auth-password">密码<input id="auth-password" name="password" aria-label="密码" v-model="password" type="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" maxlength="256" required></label>
         <button class="primary" :disabled="busy || !configReady">{{ busy ? '处理中…' : mode === 'login' ? '登录' : mode === 'register' ? (config.emailVerificationRequired?'注册并发送验证邮件':'注册账号') : mode === 'verify' ? '确认验证邮箱' : mode === 'forgot' ? '发送重置链接' : '保存新密码' }}</button>
       </form>
       <p v-if="error" class="error" role="alert">{{ error }}</p><p v-if="message" class="notice" role="status">{{ message }}</p>

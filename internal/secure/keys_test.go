@@ -38,3 +38,17 @@ func TestPasswords(t *testing.T) {
 		t.Fatal("password validation")
 	}
 }
+
+func TestPasswordLengthBoundaries(t *testing.T) {
+	for _, password := range []string{"x", "字", strings.Repeat("a", 256)} {
+		hash, err := Password(password)
+		if err != nil || !CheckPassword(password, hash) {
+			t.Fatalf("valid password rejected: %v", err)
+		}
+	}
+	for _, password := range []string{"", strings.Repeat("a", 257)} {
+		if _, err := Password(password); err == nil {
+			t.Fatal("invalid password accepted")
+		}
+	}
+}
