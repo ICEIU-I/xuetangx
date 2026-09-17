@@ -7,7 +7,7 @@ function isRateLimited(response) {
 }
 function createServerLimits({ now = Date.now } = {}) {
   const cooldowns = new Map();
-  function observe(userId, response) {
+  function observe(userId, response, { scope = 'submission' } = {}) {
     if (response.status !== 403 && !isRateLimited(response)) return null;
     const time = now(), raw = response.retryAfter;
     const detail = String(response.json?.detail || response.json?.msg || '');
@@ -17,15 +17,16 @@ function createServerLimits({ now = Date.now } = {}) {
       : raw && Number.isFinite(Date.parse(raw)) ? Math.max(0, Date.parse(raw) - time)
       : match ? Number(match[1]) * 1000 : 60000;
     const previous = cooldowns.get(userId) || {};
-    const key = response.status === 403 ? 'accessUntil' : 'submitUntil';
+    const key = response.status === 403 ? 'accessUntil' : scope === 'account' ? 'requestUntil' : 'submitUntil';
     cooldowns.set(userId, { ...previous, [key]: Math.max(previous[key] || 0, time + delay) });
     return snapshot(userId);
   }
   function snapshot(userId) {
     const saved = cooldowns.get(userId) || {}, accessReadyAt = saved.accessUntil > now() ? saved.accessUntil : null;
-    const readyAt = Math.max(saved.submitUntil || 0, saved.accessUntil || 0), blocked = readyAt > now();
+    const requestUntil = Math.max(saved.requestUntil || 0, saved.accessUntil || 0);
+    const readyAt = Math.max(saved.submitUntil || 0, requestUntil), blocked = readyAt > now();
     if (!blocked) cooldowns.delete(userId);
-    return { userId, source: 'server', blocked, readyAt: blocked ? readyAt : null, accessReadyAt,
+    return { userId, source: 'server', blocked, readyAt: blocked ? readyAt : null, accessReadyAt, requestReadyAt: requestUntil > now() ? requestUntil : null,
       reason: blocked ? accessReadyAt ? 'access_denied' : 'rate_limited' : null };
   }
   return { observe, snapshot };

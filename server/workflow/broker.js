@@ -29,7 +29,7 @@ function createBroker({ accounts, transport = http.createHttpClient({ minInterva
         try { accounts.get(entry.role, entry.userId); }
         catch (error) { queue.splice(queue.indexOf(entry), 1); entry.signal?.removeEventListener('abort', entry.abort); entry.reject(error); continue; }
         const state = serverLimits.snapshot(entry.userId);
-        const readyAt = entry.submission ? state.readyAt : state.accessReadyAt;
+        const readyAt = entry.submission ? state.readyAt : state.requestReadyAt;
         if (readyAt > now()) { earliest = Math.min(earliest, readyAt); entry.onWait?.({ ...state, readyAt }); bus.emit('rate-limit', { role: entry.role, ...state }); continue; }
         if (entry.submission && (active.get(entry.userId) || 0) >= 3) continue;
         ready.push(entry);
@@ -55,10 +55,8 @@ function createBroker({ accounts, transport = http.createHttpClient({ minInterva
       const account = accounts.get(entry.role, entry.userId);
       const options = { signal: entry.signal, headers: { xtbz: 'xt', 'X-Requested-With': 'XMLHttpRequest' } };
       const response = await (entry.method === 'GET' ? transport.get(entry.endpoint, account.cookie, options) : transport.post(entry.endpoint, entry.body, account.cookie, options));
-      if (entry.submission || response.status === 403) {
-        const state = serverLimits.observe(entry.userId, response);
-        if (state) bus.emit('rate-limit', { role: entry.role, ...state });
-      }
+      const state = serverLimits.observe(entry.userId, response, { scope: entry.submission ? 'submission' : 'account' });
+      if (state) bus.emit('rate-limit', { role: entry.role, ...state });
       if (response.status === 401) accounts.invalidate(entry.role, entry.userId);
       entry.resolve(response);
     } catch (error) { entry.reject(error); }
