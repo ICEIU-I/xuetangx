@@ -23,5 +23,6 @@ module.exports = {
   ROOT,
   ANSWERS_DIR: path.join(ROOT, 'data', 'answers'),
   ANSWER_DB_DIR: path.join(ROOT, 'data', 'answer-db'),
+  DISCUSSION_STATE_DIR: path.join(ROOT, 'data', 'discussion-state'),
   LOGS_DIR: path.join(ROOT, 'logs'),
 };

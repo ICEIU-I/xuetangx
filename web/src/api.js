@@ -28,6 +28,9 @@ export const api = {
   articleScan: (courseUrl) => j('/api/article/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
   articleRun: (courseUrl) => j('/api/article/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
   articleStop: () => j('/api/article/stop', { method: 'POST' }),
+  discussionScan: (courseUrl) => j('/api/discussion/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
+  discussionRun: (courseUrl) => j('/api/discussion/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
+  discussionStop: () => j('/api/discussion/stop', { method: 'POST' }),
 };
 
 // SSE：返回一个 EventSource，调用方监听 message

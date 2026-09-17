@@ -16,3 +16,4 @@ data/answers/*.json
 
 # 本地答案数据库（包含课程题目与采集结果）
 data/answer-db/
+data/discussion-state/

@@ -8,6 +8,7 @@ import RunConsole from './components/RunConsole.vue';
 import VideoPanel from './components/VideoPanel.vue';
 import AnswerPanel from './components/AnswerPanel.vue';
 import ArticlePanel from './components/ArticlePanel.vue';
+import DiscussionPanel from './components/DiscussionPanel.vue';
 
 const session = reactive({ connected: false, user: null });
 const stats = reactive({ totalQ: null, doneQ: null, rightQ: null });
@@ -39,6 +40,7 @@ const logs = ref([]);
 const videoState = reactive({ status: 'idle', sent: 0, total: 0, message: '', result: null });
 const answerState = reactive({ status: 'idle', message: '', result: null });
 const articleState = reactive({ status: 'idle', message: '', result: null });
+const discussionState = reactive({ status: 'idle', message: '', result: null });
 let es = null;
 
 function fmtTime(ts) {
@@ -97,12 +99,14 @@ function clearLogs() { logs.value = []; }
 
 // 处理 SSE 事件
 function handleEvent(evt) {
+  if (evt.type === 'discussion') { Object.assign(discussionState, evt); return; }
   if (evt.type === 'article') { Object.assign(articleState, evt); return; }
   if (evt.type === 'answer-bank') { Object.assign(answerState, evt); return; }
   if (evt.type === 'video') { Object.assign(videoState, evt); return; }
   if (evt.type === 'hello' && evt.video) Object.assign(videoState, evt.video);
   if (evt.type === 'hello' && evt.answerBank) Object.assign(answerState, evt.answerBank);
   if (evt.type === 'hello' && evt.article) Object.assign(articleState, evt.article);
+  if (evt.type === 'hello' && evt.discussion) Object.assign(discussionState, evt.discussion);
   if (evt.type === 'progress') {
     Object.assign(runState, pick(evt));
     pushLog(evt.mark, evt.name, evt.problemId, evt.msg);
@@ -171,6 +175,7 @@ onUnmounted(() => { if (es) es.close(); if (typeTimer) clearTimeout(typeTimer); 
   <CookiePanel :session="session" @connected="onConnected" @disconnected="onDisconnected" />
   <VideoPanel :session="session" :task="videoState" />
   <ArticlePanel :session="session" :task="articleState" />
+  <DiscussionPanel :session="session" :task="discussionState" />
   <AnswerPanel :session="session" :task="answerState" />
   <RunConsole
     :runState="runState" :logs="logs" :connected="session.connected" :selectedCount="selected.length"
