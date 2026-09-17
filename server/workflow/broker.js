@@ -1,8 +1,9 @@
 const { EventEmitter } = require('node:events');
 const http = require('../../src/http');
+const { createServerLimits } = require('./server-limits');
 const SUBMIT = '/api/v1/lms/exercise/problem_apply/';
 
-function createBroker({ accounts, quota, transport = http.createHttpClient({ minInterval: 0, retryDelays: [] }), interval = 750, now = Date.now } = {}) {
+function createBroker({ accounts, transport = http.createHttpClient({ minInterval: 0, retryDelays: [] }), interval = 0, now = Date.now, serverLimits = createServerLimits({ now }) } = {}) {
   const bus = new EventEmitter(), queue = [], active = new Map();
   let timer, pumping = false, nextAt = 0, submitStreak = 0, closed = false;
   const abortError = () => Object.assign(new Error('请求已取消'), { name: 'AbortError' });
@@ -29,8 +30,8 @@ function createBroker({ accounts, quota, transport = http.createHttpClient({ min
         catch (error) { queue.splice(queue.indexOf(entry), 1); entry.signal?.removeEventListener('abort', entry.abort); entry.reject(error); continue; }
         if (entry.submission) {
           if ((active.get(entry.userId) || 0) >= 3) continue;
-          const state = await quota.snapshot(entry.userId);
-          if (state.readyAt > now()) { earliest = Math.min(earliest, state.readyAt); entry.onWait?.(state); bus.emit('quota', { role: entry.role, ...state }); continue; }
+          const state = serverLimits.snapshot(entry.userId);
+          if (state.blocked) { earliest = Math.min(earliest, state.readyAt); entry.onWait?.(state); bus.emit('rate-limit', { role: entry.role, ...state }); continue; }
         }
         ready.push(entry);
       }
@@ -38,9 +39,6 @@ function createBroker({ accounts, quota, transport = http.createHttpClient({ min
       const entry = writes.length && (submitStreak < 2 || !normal.length) ? writes[0] : normal[0] || writes[0];
       if (!entry) { if (Number.isFinite(earliest)) schedule(earliest - now()); return; }
       if (entry.signal?.aborted || !queue.includes(entry)) { schedule(); return; }
-      if (entry.submission && !await quota.reserve(entry.userId)) { schedule(); return; }
-      if (entry.signal?.aborted || !queue.includes(entry)) { schedule(); return; }
-      // Durable reservation is immediately followed by the actual outbound attempt.
       queue.splice(queue.indexOf(entry), 1); entry.signal?.removeEventListener('abort', entry.abort);
       nextAt = now() + interval;
       if (entry.submission) { submitStreak++; active.set(entry.userId, (active.get(entry.userId) || 0) + 1); }
@@ -48,7 +46,7 @@ function createBroker({ accounts, quota, transport = http.createHttpClient({ min
       execute(entry).catch(() => {});
       if (queue.length) schedule(nextAt - now());
     } catch (error) {
-      // Storage errors must fail closed; never emit unhandled rejections or send unmetered requests.
+      // Fail queued requests rather than leaving callers unresolved.
       for (const entry of queue.splice(0)) { entry.signal?.removeEventListener('abort', entry.abort); entry.reject(error); }
     } finally { pumping = false; }
   }
@@ -57,21 +55,19 @@ function createBroker({ accounts, quota, transport = http.createHttpClient({ min
       const account = accounts.get(entry.role, entry.userId);
       const options = { signal: entry.signal, headers: { xtbz: 'xt', 'X-Requested-With': 'XMLHttpRequest' } };
       const response = await (entry.method === 'GET' ? transport.get(entry.endpoint, account.cookie, options) : transport.post(entry.endpoint, entry.body, account.cookie, options));
-      if (entry.submission && response.status === 429) {
-        const raw = response.retryAfter, seconds = Number(/(\d+(?:\.\d+)?)\s*seconds?/.exec(response.json?.detail || response.json?.msg || '')?.[1]);
-        const until = raw != null && Number.isFinite(Number(raw)) ? now() + Number(raw) * 1000 + 1000
-          : raw && Number.isFinite(Date.parse(raw)) ? Date.parse(raw) + 1000 : now() + (Number.isFinite(seconds) ? seconds * 1000 + 1000 : 61000);
-        await quota.coolDown(entry.userId, until);
+      if (entry.submission) {
+        const state = serverLimits.observe(entry.userId, response);
+        if (state) bus.emit('rate-limit', { role: entry.role, ...state });
       }
       if (response.status === 401) accounts.invalidate(entry.role, entry.userId);
       entry.resolve(response);
     } catch (error) { entry.reject(error); }
     finally {
-      if (entry.submission) { active.set(entry.userId, (active.get(entry.userId) || 1) - 1); try { bus.emit('quota', { role: entry.role, ...await quota.snapshot(entry.userId) }); } catch {} }
+      if (entry.submission) { active.set(entry.userId, (active.get(entry.userId) || 1) - 1); bus.emit('rate-limit', { role: entry.role, ...serverLimits.snapshot(entry.userId) }); }
       schedule(Math.max(0, nextAt - now()));
     }
   }
   function close() { closed = true; clearTimeout(timer); for (const entry of queue.splice(0)) { entry.signal?.removeEventListener('abort', entry.abort); entry.reject(abortError()); } }
-  return { request, close, onQuota(fn) { bus.on('quota', fn); return () => bus.off('quota', fn); } };
+  return { request, close, onRateLimit(fn) { bus.on('rate-limit', fn); return () => bus.off('rate-limit', fn); } };
 }
 module.exports = { createBroker, SUBMIT };

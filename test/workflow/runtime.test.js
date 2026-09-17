@@ -11,7 +11,7 @@ const problem = id => ({ problem_id: id, index: id, content: { Type: 'SingleChoi
 async function until(predicate, timeout = 6000) {
   const start = Date.now(); while (!await predicate()) { if (Date.now() - start > timeout) throw Error('等待测试条件超时'); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
-async function fixture(t, { withTest = false, enrolledTest = true, quotaLimit = 20, pendingMedia = false, uncertainSubmission = false, slowDiscovery = false } = {}) {
+async function fixture(t, { withTest = false, enrolledTest = true, pendingMedia = false, uncertainSubmission = false, slowDiscovery = false } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-'));
   const accounts = createAccounts({ authenticate: async cookie => ({ user_id: Number(cookie) }) });
   await accounts.connect('primary', '1'); if (withTest) await accounts.connect('test', '2');
@@ -49,7 +49,7 @@ async function fixture(t, { withTest = false, enrolledTest = true, quotaLimit = 
       return response(data);
     },
   };
-  const runtime = createRuntime({ directory: path.join(root, 'runtime'), bankDirectory: path.join(root, 'bank'), accounts, transport, interval: 0, quotaOptions: { limit: quotaLimit, period: 60, guard: 1 }, forkImpl(file, args, options) {
+  const runtime = createRuntime({ directory: path.join(root, 'runtime'), bankDirectory: path.join(root, 'bank'), accounts, transport, interval: 0, forkImpl(file, args, options) {
     assert.ok(!('COOKIE' in options.env)); assert.ok(!('TEST_COOKIE' in options.env));
     return require('node:child_process').fork(file, args, options);
   } });
@@ -59,7 +59,7 @@ async function fixture(t, { withTest = false, enrolledTest = true, quotaLimit = 
 }
 
 test('real child processes stream answers from test to formal account and persist complete results', async t => {
-  const { runtime, posts, root } = await fixture(t, { withTest: true, quotaLimit: 2 });
+  const { runtime, posts, root } = await fixture(t, { withTest: true });
   const job = await runtime.start({ courseUrl });
   await until(async () => ['done', 'partial'].includes((await runtime.get(job.id)).status));
   const result = await runtime.get(job.id);
@@ -166,4 +166,16 @@ test('stopping one module during discovery does not cancel initialization of the
   await until(async () => (await runtime.get(job.id)).modules.homework.status === 'done');
   const result = await runtime.get(job.id);
   assert.equal(result.modules.video.status, 'stopped'); assert.equal(result.modules.article.status, 'done');
+});
+
+test('obsolete persisted quotas do not block or affect the current runtime', async t => {
+  const { runtime, root } = await fixture(t, { withTest: true });
+  const folder = path.join(root, 'runtime/quota');
+  await fs.mkdir(folder, { recursive: true }); await fs.writeFile(path.join(folder, '1.json'), '{obsolete-and-broken');
+  const job = await runtime.start({ courseUrl });
+  await until(async () => (await runtime.get(job.id)).status === 'done');
+  const state = await runtime.snapshot();
+  assert.equal(state.rateLimits.primary.blocked, false);
+  assert.equal('quotas' in state, false);
+  assert.equal(await fs.readFile(path.join(folder, '1.json'), 'utf8'), '{obsolete-and-broken');
 });

@@ -13,7 +13,7 @@ function createContext(runtime) {
   const initial = () => ({ status: 'idle', message: '', total: 0, done: 0, processed: 0, correct: 0, failed: 0, result: null });
   function legacyState(kind, job) {
     const module = job?.modules[kind]; if (!module) return initial();
-    const status = ['running', 'queued', 'scanning', 'waiting_answers', 'waiting_quota'].includes(module.status) ? 'running'
+    const status = ['running', 'queued', 'scanning', 'waiting_answers', 'waiting_rate_limit'].includes(module.status) ? 'running'
       : ['blocked', 'error', 'waiting_account', 'waiting_enrollment'].includes(module.status) ? 'error' : module.status;
     const results = (module.results || []).map(item => ({ ...item, leafId: item.unitId, url: `${job.course.url}/${kind}/${item.unitId}` }));
     const value = { ...module, status, jobId: job.id, course: job.course, courseUrl: job.course.url, concurrency: job.concurrency, results };

@@ -1,5 +1,6 @@
 const { fingerprint, storedAnswer, submitBody, probeBody } = require('./questions');
 const { SUBMIT } = require('./broker');
+const { isRateLimited } = require('./server-limits');
 const errorOf = (message, code) => Object.assign(new Error(message), { code });
 function createOperations({ accounts, bank, catalog, effects, call, now, waiting }) {
   const submissions = new Map();
@@ -32,7 +33,7 @@ function createOperations({ accounts, bank, catalog, effects, call, now, waiting
         try {
           const response = await call(actor.account, 'POST', SUBMIT, { leaf_id: args.leafId, classroom_id: job.course.classroomId, exercise_id: exercise.exerciseId,
             problem_id: args.problemId, sign: job.course.sign, ...args.body }, { signal: actor.controller.signal, onWait: state => waiting(job, actor, state) });
-          if (response.status === 429) {
+          if (isRateLimited(response)) {
             await effects.save(key, { ...record, state: 'rejected' });
             if (attempt < 3) continue;
             throw errorOf('多次达到平台提交限速，请稍后继续', 'RATE_LIMITED');

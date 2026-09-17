@@ -5,7 +5,7 @@ const { EventEmitter } = require('node:events');
 const { setTimeout: sleep } = require('node:timers/promises');
 const { createStorage } = require('./storage');
 const { createAccounts } = require('./accounts');
-const { createQuota } = require('./quota');
+const { createServerLimits } = require('./server-limits');
 const { createBroker } = require('./broker');
 const { createCatalog } = require('./catalog');
 const { createBank } = require('./bank');
@@ -17,13 +17,13 @@ const { parseCourseUrl } = require('../../src/video');
 const { concurrency: getConcurrency } = require('../../src/tasks');
 const { ROOT, ANSWER_DB_DIR } = require('../../config');
 const KINDS = ['video', 'article', 'discussion', 'homework', 'collector'];
-const ACTIVE = new Set(['running', 'queued', 'waiting_answers', 'waiting_quota', 'scanning']);
+const ACTIVE = new Set(['running', 'queued', 'waiting_answers', 'waiting_rate_limit', 'scanning']);
 
-function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirectory = ANSWER_DB_DIR, accounts = createAccounts(), transport, interval = 750, now = Date.now, quotaOptions = {}, forkImpl = fork } = {}) {
+function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirectory = ANSWER_DB_DIR, accounts = createAccounts(), transport, interval = 0, now = Date.now, forkImpl = fork } = {}) {
   const events = new EventEmitter(); events.setMaxListeners(100);
   const jobsStore = createStorage(path.join(directory, 'jobs')), effects = createStorage(path.join(directory, 'effects'));
-  const quota = createQuota({ storage: createStorage(path.join(directory, 'quota')), now, ...quotaOptions });
-  const broker = createBroker({ accounts, quota, ...(transport ? { transport } : {}), interval, now });
+  const serverLimits = createServerLimits({ now });
+  const broker = createBroker({ accounts, serverLimits, ...(transport ? { transport } : {}), interval, now });
   const jobs = new Map(), actors = new Map(), preparing = new Map(), collecting = new Map();
   const exits = new Set(), bankUpdates = new Set(), settling = new Map();
   function beginOperation(id) {
@@ -52,7 +52,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   function aggregate(job) {
     const states = Object.values(job.modules).map(module => module.status);
     if (job.control === 'paused' || job.control === 'stopped') { job.status = job.control; return; }
-    if (states.some(status => ['running', 'scanning', 'queued', 'waiting_quota'].includes(status))) job.status = 'running';
+    if (states.some(status => ['running', 'scanning', 'queued', 'waiting_rate_limit'].includes(status))) job.status = 'running';
     else if (states.some(status => status.startsWith('waiting_'))) job.status = 'waiting_input';
     else if (states.some(status => ['partial', 'blocked', 'error', 'paused', 'stopped'].includes(status))) job.status = 'partial';
     else job.status = 'done';
@@ -83,7 +83,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     if (job.control || stoppedPreparation) await Promise.allSettled([...(settling.get(job.id) || [])]);
   }
   function waiting(job, actor, state) {
-    const module = job.modules[actor.kind]; module.status = 'waiting_quota'; module.readyAt = state.readyAt; module.message = '本周期提交额度已用完，等待下一周期';
+    const module = job.modules[actor.kind]; module.status = 'waiting_rate_limit'; module.message = '服务端返回限流，等待后自动重试';
     log(job, actor.kind, module.message);
     publish(job).catch(() => {});
   }
@@ -136,7 +136,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
       bankUpdates.add(update); update.finally(() => bankUpdates.delete(update));
     }
   });
-  const offQuota = broker.onQuota(state => events.emit('event', { type: 'quota', ...state, ts: now() }));
+  const offRateLimit = broker.onRateLimit(state => events.emit('event', { type: 'rate-limit', ...state, ts: now() }));
   const offAccounts = accounts.onChange(change => {
     events.emit('event', { type: 'accounts', accounts: { primary: accounts.summary('primary'), test: accounts.summary('test') }, ts: now() });
     for (const job of jobs.values()) {
@@ -149,12 +149,12 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   });
   async function snapshot() {
     await ready; const primaryId = accounts.summary('primary').userId;
-    const quotas = {};
-    for (const role of ['primary', 'test']) { const userId = accounts.summary(role).userId; quotas[role] = userId ? await quota.snapshot(userId) : null; }
-    return { accounts: { primary: accounts.summary('primary'), test: accounts.summary('test') }, quotas, jobs: [...jobs.values()].filter(job => job.primaryId === primaryId).sort((a, b) => b.createdAt - a.createdAt).map(view) };
+    const rateLimits = {};
+    for (const role of ['primary', 'test']) { const userId = accounts.summary(role).userId; rateLimits[role] = userId ? serverLimits.snapshot(userId) : null; }
+    return { accounts: { primary: accounts.summary('primary'), test: accounts.summary('test') }, rateLimits, jobs: [...jobs.values()].filter(job => job.primaryId === primaryId).sort((a, b) => b.createdAt - a.createdAt).map(view) };
   }
   async function close() {
-    closed = true; offAccounts(); offBank(); offQuota();
+    closed = true; offAccounts(); offBank(); offRateLimit();
     preparing.forEach(controller => controller.abort()); collecting.forEach(controller => controller.abort());
     await Promise.allSettled([...jobs.values()].filter(job => Object.keys(job.modules).some(kind => actors.has(actorKey(job, kind)))).map(job => { job.control = 'paused'; return stopActors(job, Object.keys(job.modules), 'paused'); }));
     await Promise.allSettled([...exits, ...bankUpdates]);
@@ -162,7 +162,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     await jobsStore.flush(); await effects.flush();
     broker.close();
   }
-  return { accounts, quota, broker, bank, catalog, ready, start, control, snapshot, close,
+  return { accounts, serverLimits, broker, bank, catalog, ready, start, control, snapshot, close,
     get: async id => { await ready; const job = jobs.get(id); if (!job || job.primaryId !== accounts.summary('primary').userId) throw new Error('任务不存在'); return view(job); },
     onEvent(fn) { events.on('event', fn); return () => events.off('event', fn); } };
 }

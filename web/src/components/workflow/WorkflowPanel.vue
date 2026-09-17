@@ -2,17 +2,17 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { api, subscribeEvents } from '../../api';
 const props = defineProps({ session: Object });
-const courses = ref([]), courseUrl = ref(''), concurrency = ref(3), jobs = ref([]), quotas = ref({});
+const courses = ref([]), courseUrl = ref(''), concurrency = ref(3), jobs = ref([]), rateLimits = ref({});
 const testAccount = ref({ connected: false }), testCookie = ref(''), testOpen = ref(false);
 const busy = ref(false), testBusy = ref(false), error = ref(''), testError = ref(''), now = ref(Date.now());
 const accountId = computed(() => props.session.connected ? String(props.session.user?.user_id || props.session.user?.id || '') : '');
 const job = computed(() => jobs.value.find(item => item.course.url === courseUrl.value));
 const modules = [{ kind: 'video', title: '看视频', icon: '▶' }, { kind: 'article', title: '图文阅读', icon: '▤' }, { kind: 'discussion', title: '讨论', icon: '◌' }, { kind: 'homework', title: '答题', icon: '✓' }];
 const running = computed(() => job.value && ['running', 'waiting_input'].includes(job.value.status));
-const names = { queued: '准备中', scanning: '扫描课程', running: '执行中', waiting_input: '等待补充信息', waiting_answers: '等待答案', waiting_account: '等待账号', waiting_enrollment: '等待选课', waiting_quota: '等待下个周期', done: '已完成', partial: '部分完成', blocked: '需要处理', paused: '已暂停', stopped: '已停止' };
+const names = { queued: '准备中', scanning: '扫描课程', running: '执行中', waiting_input: '等待补充信息', waiting_answers: '等待答案', waiting_account: '等待账号', waiting_enrollment: '等待选课', waiting_rate_limit: '服务端限流等待', done: '已完成', partial: '部分完成', blocked: '需要处理', paused: '已暂停', stopped: '已停止' };
 function updateJob(value) { const index = jobs.value.findIndex(item => item.id === value.id); if (index < 0) jobs.value.unshift(value); else jobs.value[index] = value; jobs.value.sort((a, b) => b.createdAt - a.createdAt); }
 async function refresh() {
-  const state = await api.workflowState(); jobs.value = state.jobs; quotas.value = state.quotas; testAccount.value = state.accounts.test;
+  const state = await api.workflowState(); jobs.value = state.jobs; rateLimits.value = state.rateLimits || {}; testAccount.value = state.accounts.test;
 }
 async function load() {
   if (!accountId.value) return;
@@ -43,23 +43,8 @@ async function connectTest() {
   finally { testBusy.value = false; }
 }
 async function disconnectTest() { try { await api.testDisconnect(); await refresh(); } catch (e) { testError.value = e.message; } }
-function countdown(quota) { return quota?.blocked ? Math.max(0, Math.ceil((quota.readyAt - now.value) / 1000)) : 0; }
-function quotaUsed(quota) { return quota?.resetsAt && now.value >= quota.resetsAt ? 0 : quota?.used || 0; }
+function countdown(state) { return state?.blocked ? Math.max(0, Math.ceil((state.readyAt - now.value) / 1000)) : 0; }
 function percent(module) { return module?.total ? Math.min(100, Math.round((module.processed || 0) / module.total * 100)) : module?.status === 'done' ? 100 : 0; }
-function estimate(count, quota) {
-  if (!count) return 0; if (!quota) return null;
-  const remaining = quota.limit - quotaUsed(quota);
-  if (count <= remaining) return Math.ceil(count * 0.75);
-  const after = count - remaining;
-  return Math.max(0, Math.ceil(((quota.resetsAt || now.value + 61000) - now.value) / 1000)) + Math.floor((after - 1) / 20) * 61 + Math.ceil(((after - 1) % 20 + 1) * 0.75);
-}
-const estimated = computed(() => {
-  if (!job.value?.coverage || !['running', 'waiting_input'].includes(job.value.status)) return null;
-  const answer = job.value.modules.homework;
-  const primary = estimate(Math.max(0, (answer?.total || job.value.coverage.total) - (answer?.processed || 0)), quotas.value.primary);
-  const test = estimate(job.value.coverage.missing, quotas.value.test);
-  return primary == null || test == null ? null : Math.max(primary, test);
-});
 const failures = computed(() => Object.entries(job.value?.modules || {}).flatMap(([kind, value]) => (value.results || []).filter(item => item.error).map(item => ({ ...item, kind }))));
 const waiting = computed(() => Object.values(job.value?.modules || {}).some(module => ['waiting_account', 'waiting_enrollment'].includes(module.status)));
 let events, clock, polling, refreshing = false;
@@ -68,7 +53,7 @@ onMounted(() => {
   load();
   events = subscribeEvents(event => {
     if (event.type === 'workflow') updateJob(event.job);
-    if (event.type === 'quota') quotas.value = { ...quotas.value, [event.role]: event };
+    if (event.type === 'rate-limit') rateLimits.value = { ...rateLimits.value, [event.role]: event };
   });
   clock = setInterval(() => { now.value = Date.now(); }, 1000);
   polling = setInterval(async () => {
@@ -93,7 +78,6 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
       <button v-if="running" :disabled="busy" @click="control('pause')">暂停</button>
       <button v-if="job && ['paused','partial','stopped','waiting_input'].includes(job.status)" :disabled="busy" @click="control('resume')">继续 / 重试未完成项</button>
       <button v-if="running || job?.status === 'paused'" class="danger" :disabled="busy" @click="control('stop')">停止</button>
-      <span v-if="estimated != null" class="dim">答题额度估计还需约 {{ Math.ceil(estimated / 60) }} 分钟</span>
     </div>
     <details class="test-account" :open="testOpen || waiting" @toggle="testOpen = $event.target.open">
       <summary>测试账号 <span class="dim">{{ testAccount.connected ? `已连接 · ${testAccount.userId}` : '可选，缺少答案时使用' }}</span></summary>
@@ -103,9 +87,9 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
       <p v-if="testError" class="error" role="alert">{{ testError }}</p>
       <p v-if="job?.modules.collector?.message && job.modules.collector.status !== 'done'" class="notice">{{ job.modules.collector.message }}</p>
     </details>
-    <div class="quota-grid">
-      <div v-for="role in ['primary','test']" :key="role" class="quota-card"><span class="dim">{{ role === 'primary' ? '正式账号提交额度' : '测试账号采集额度' }}</span><strong>{{ quotas[role] ? `${quotaUsed(quotas[role])} / 20` : '未连接' }}</strong><span class="dim">{{ countdown(quotas[role]) ? `${countdown(quotas[role])} 秒后继续提交` : '每个账号独立的 60 秒周期' }}</span></div>
-      <div class="quota-card"><span class="dim">本课程题库</span><strong>{{ job?.coverage ? `${job.coverage.captured} / ${job.coverage.total}` : '待扫描' }}</strong><span class="dim">{{ job?.coverage?.missing ? `缺少 ${job.coverage.missing} 条答案，边采集边作答` : '仅使用匹配版本的标准答案' }}</span></div>
+    <div class="status-grid">
+      <div v-for="role in ['primary','test']" :key="role" class="status-card"><span class="dim">{{ role === 'primary' ? '正式账号提交状态' : '测试账号采集状态' }}</span><strong>{{ !rateLimits[role] ? '未连接' : countdown(rateLimits[role]) ? '限流等待' : '可提交' }}</strong><span class="dim">{{ countdown(rateLimits[role]) ? `服务端限流，${countdown(rateLimits[role])} 秒后重试` : '仅在服务端返回限流时等待' }}</span></div>
+      <div class="status-card"><span class="dim">本课程题库</span><strong>{{ job?.coverage ? `${job.coverage.captured} / ${job.coverage.total}` : '待扫描' }}</strong><span class="dim">{{ job?.coverage?.missing ? `缺少 ${job.coverage.missing} 条答案，边采集边作答` : '仅使用匹配版本的标准答案' }}</span></div>
     </div>
     <div class="module-grid">
       <article v-for="item in modules" :key="item.kind" class="module-card" :data-module="item.kind">
@@ -136,9 +120,9 @@ select { font: inherit; min-width: 0; padding: 10px; background: white; border: 
 .test-account summary { cursor: pointer; font-weight: 600; }
 .test-account summary span { margin-left: 10px; font-weight: 400; }
 .test-account textarea { margin: 8px 0; }
-.quota-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0; }
-.quota-card { padding: 13px; background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 5px; }
-.quota-card strong { font-size: 22px; }
+.status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0; }
+.status-card { padding: 13px; background: var(--bg-panel-2); border: 1px solid var(--border); border-radius: 10px; display: flex; flex-direction: column; gap: 5px; }
+.status-card strong { font-size: 22px; }
 .module-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .module-card { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.6); }
 .module-count { font-size: 24px; margin: 10px 0; font-variant-numeric: tabular-nums; }
@@ -150,6 +134,6 @@ progress { width: 100%; height: 7px; accent-color: var(--accent); }
 .failures div { padding-top: 6px; }
 .saved-note { font-size: 11px; margin-top: 16px; }
 .unified-log { margin-top: 16px; }.unified-log summary { cursor: pointer; }.log-list { margin-top: 10px; max-height: 230px; overflow: auto; font-size: 11px; overflow-wrap: anywhere; }.log-list div { padding: 4px 0; }
-@media (max-width: 800px) { .module-grid { grid-template-columns: repeat(2,1fr); } .quota-grid { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .module-grid { grid-template-columns: repeat(2,1fr); } .status-grid { grid-template-columns: 1fr; } }
 @media (max-width: 480px) { .workflow-heading { flex-direction: column; } #workflow-course { min-width: 100%; max-width: 100%; } .module-grid { grid-template-columns: 1fr; } }
 </style>

@@ -10,7 +10,7 @@ function createRequestClient({ broker }) {
         if (response.status === 403) throw errorOf('平台拒绝访问（HTTP 403），请检查官网或稍后继续', 'ACCESS_DENIED');
         return response;
       } catch (error) {
-        // Generic write results are never replayed. Quota-requiring writes are retried explicitly below.
+        // Generic write results are never replayed. Question submissions handle explicit server-limit retries in operations.js.
         const safe = error.connectionEstablished === false || (method === 'GET' && !/user_article_finish|forum\/unit\/discussion/.test(endpoint));
         if (signal?.aborted || !safe || !['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED'].includes(error.code) || attempt >= 2 || endpoint === SUBMIT) throw error;
         await sleep(1000 * (attempt + 1), undefined, { signal });
