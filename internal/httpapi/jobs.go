@@ -78,5 +78,9 @@ func (s *Server) snapshot(ctx context.Context, owner string, limit, offset int) 
 	if e != nil {
 		return nil, e
 	}
-	return map[string]any{"accounts": accounts, "rateLimits": limits, "jobs": list, "pagination": map[string]int{"total": total, "limit": limit, "offset": offset}}, nil
+	shared, e := s.Accounts.SharedCollectors(ctx, 0)
+	if e != nil {
+		return nil, e
+	}
+	return map[string]any{"sharedCollectors": len(shared), "accounts": accounts, "rateLimits": limits, "jobs": list, "pagination": map[string]int{"total": total, "limit": limit, "offset": offset}}, nil
 }

@@ -10,6 +10,7 @@ type User struct {
 	Admin    bool   `json:"admin"`
 }
 type Account struct {
+	Shared      bool   `json:"-"`
 	ID          string `json:"id"`
 	Owner       string `json:"-"`
 	UserID      int64  `json:"userId"`

@@ -1,0 +1,8 @@
+<script setup>
+import { ref,onMounted } from 'vue';import {request} from '../../api';
+defineEmits(['navigate']);const metrics=ref({}),conflicts=ref([]),error=ref(''),loading=ref(false);
+const labels={users:'网站用户',activeUsers:'正常用户',availableCollectors:'可用采集账号',capturedAnswers:'共享标准答案',pendingOperations:'待核对操作',workerRestarts:'进程恢复次数'};
+async function load(){loading.value=true;error.value='';try{const [m,c]=await Promise.all([request('/api/admin/metrics'),request('/api/admin/conflicts?limit=30')]);metrics.value=m;conflicts.value=c.conflicts;}catch(e){error.value=e.message;}finally{loading.value=false;}}
+onMounted(load);
+</script>
+<template><div class="row between"><p class="dim"><span class="pill" :class="{ok:metrics.ready}">{{metrics.ready?'服务运行正常':'正在检查服务'}}</span></p><button :disabled="loading" @click="load">刷新数据</button></div><p v-if="error" class="error" role="alert">{{error}}</p><div class="metric-grid"><div v-for="(label,key) in labels" :key="key" class="metric"><span>{{label}}</span><strong>{{metrics[key]??'—'}}</strong></div></div><section class="panel"><div class="row between"><h2>答案采集</h2><button class="primary" @click="$emit('navigate','collectors')">管理采集账号</button></div><p class="dim">用户课程缺少答案时，系统使用可用采集账号补齐共享题库。未加入的课程只尝试免费加入，付费课程跳过。</p><p v-if="metrics.availableCollectors===0" class="empty"><strong>尚无可用的答案采集账号</strong>添加账号 Cookie 后即可为全站提供答案采集。</p></section><section class="panel"><div class="row between"><h2>题库冲突</h2><span class="pill">{{conflicts.length}} 条待核验</span></div><p class="dim">同版本答案存在冲突时，系统暂停使用该答案。</p><p v-if="!conflicts.length" class="empty">暂无题库冲突</p><div v-for="c in conflicts" :key="c.id" class="record-card">班级 {{c.classroomId}} · 题目 {{c.problemId}}</div></section></template>

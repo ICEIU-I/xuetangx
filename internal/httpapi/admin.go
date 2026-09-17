@@ -1,10 +1,8 @@
 package httpapi
 
 import (
-	"github.com/google/uuid"
 	"net/http"
 	"xuetangx/internal/fault"
-	"xuetangx/internal/store/dbgen"
 )
 
 func (s *Server) admin(fn http.HandlerFunc) http.Handler {
@@ -18,19 +16,9 @@ func (s *Server) admin(fn http.HandlerFunc) http.Handler {
 }
 func (s *Server) adminRoutes(m *http.ServeMux) {
 	m.Handle("GET /api/admin/jobs", s.admin(s.adminJobs))
-	m.Handle("GET /api/admin/users", s.admin(func(w http.ResponseWriter, r *http.Request) {
-		limit, offset := page(r)
-		users, e := dbgen.New(s.Auth.DB.Pool).ListUsers(r.Context(), dbgen.ListUsersParams{Limit: int32(limit), Offset: int32(offset)})
-		if e != nil {
-			writeError(w, e)
-			return
-		}
-		out := []any{}
-		for _, u := range users {
-			out = append(out, map[string]any{"id": uuid.UUID(u.ID.Bytes).String(), "email": u.Email, "verified": u.Verified, "disabled": u.Disabled, "admin": u.Admin, "createdAt": u.CreatedAt.Time})
-		}
-		writeJSON(w, 200, map[string]any{"users": out})
-	}))
+	s.adminUserRoutes(m)
+	s.adminCollectorRoutes(m)
+	m.Handle("GET /api/admin/users", s.admin(s.adminUsers))
 	m.Handle("POST /api/admin/users/{id}/disable", s.admin(func(w http.ResponseWriter, r *http.Request) {
 		var v struct{ Disabled bool }
 		if e := body(w, r, &v); e != nil {
@@ -69,7 +57,7 @@ func (s *Server) adminRoutes(m *http.ServeMux) {
 }
 func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{"ready": s.Engine.Ready()}
-	for key, query := range map[string]string{"queuedJobs": "SELECT count(*) FROM jobs WHERE status='queued'", "runningJobs": "SELECT count(*) FROM jobs WHERE status='running'", "pendingOperations": "SELECT count(*) FROM operations WHERE state IN ('pending','unknown')", "failedMail": "SELECT count(*) FROM mail_outbox WHERE sent_at IS NULL AND attempts>0", "workerRestarts": "SELECT coalesce(sum(restarts),0) FROM job_modules"} {
+	for key, query := range map[string]string{"users": "SELECT count(*) FROM users", "activeUsers": "SELECT count(*) FROM users WHERE NOT disabled", "collectors": "SELECT count(*) FROM platform_accounts WHERE shared_collector", "availableCollectors": "SELECT count(*) FROM platform_accounts WHERE shared_collector AND enabled AND valid", "capturedAnswers": "SELECT count(*) FROM standard_answers WHERE status='captured'", "queuedJobs": "SELECT count(*) FROM jobs WHERE status='queued'", "runningJobs": "SELECT count(*) FROM jobs WHERE status='running'", "pendingOperations": "SELECT count(*) FROM operations WHERE state IN ('pending','unknown')", "failedMail": "SELECT count(*) FROM mail_outbox WHERE sent_at IS NULL AND attempts>0", "workerRestarts": "SELECT coalesce(sum(restarts),0) FROM job_modules"} {
 		var n int64
 		if e := s.Auth.DB.Pool.QueryRow(r.Context(), query).Scan(&n); e != nil {
 			writeError(w, e)

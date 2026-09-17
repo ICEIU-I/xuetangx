@@ -14,12 +14,14 @@ import (
 )
 
 type Platform struct {
-	Server           *httptest.Server
-	Client           *platform.Client
-	mu               sync.Mutex
-	Answers, Posts   map[int64]int
-	Videos, Articles map[int64]bool
-	Submitted        []int64
+	Server                       *httptest.Server
+	Client                       *platform.Client
+	mu                           sync.Mutex
+	Answers, Posts               map[int64]int
+	Videos, Articles             map[int64]bool
+	Submitted                    []int64
+	EnrollmentRequired, Enrolled bool
+	EnrollmentCalls              int
 }
 
 func MockPlatform(t testing.TB) *Platform {
@@ -62,7 +64,25 @@ func (p *Platform) handle(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.URL.Path == "/api/v1/u/user/basic_profile/":
 		write(wire.Object{"user_id": uid, "name": fmt.Sprintf("Student %d", uid)})
+	case r.URL.Path == "/api/v1/lms/product/get_product_basic_info/":
+		write(wire.Object{"id": 99, "sign": "s", "course_sign": "c"})
+	case r.URL.Path == "/api/v1/lms/product/classroom/":
+		write(wire.Object{"current": []any{wire.Object{"classroom_id": 12}}})
+	case r.URL.Path == "/api/v1/lms/product/sku_pay_detail/":
+		write(wire.Object{"product_id": 99, "sku_info": []any{wire.Object{"sku_id": 1102, "current_price": 0, "status": 5}}})
+	case r.URL.Path == "/api/v1/lms/order/entries_free_sku/99/":
+		if uid != 202 || q.Get("sid") != "1102" || r.Method != "POST" {
+			w.WriteHeader(400)
+			return
+		}
+		p.EnrollmentCalls++
+		p.Enrolled = true
+		write(wire.Object{})
 	case r.URL.Path == "/api/v1/lms/user/user-courses/":
+		if p.EnrollmentRequired && uid == 202 && !p.Enrolled {
+			write(wire.Object{"pages": 1, "product_list": []any{}})
+			return
+		}
 		write(wire.Object{"pages": 1, "product_list": []any{wire.Object{"classroom_id": 12, "sign": "s", "course_sign": "c", "name": "模拟课程"}}})
 	case r.URL.Path == "/api/v1/lms/learn/course/chapter":
 		write(wire.Object{"course_chapter": []any{wire.Object{"id": 11, "leaf_type": 0, "name": "视频"}, wire.Object{"id": 22, "leaf_type": 3, "name": "图文"}, wire.Object{"id": 33, "leaf_type": 4, "name": "讨论"}, wire.Object{"id": 34, "leaf_type": 5, "name": "练习"}}})
@@ -128,3 +148,10 @@ func (p *Platform) Counts(uid int64) (int, int) {
 	defer p.mu.Unlock()
 	return p.Answers[uid], p.Posts[uid]
 }
+
+func (p *Platform) RequireCollectorEnrollment() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.EnrollmentRequired = true
+}
+func (p *Platform) Joins() int { p.mu.Lock(); defer p.mu.Unlock(); return p.EnrollmentCalls }

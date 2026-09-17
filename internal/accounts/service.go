@@ -56,9 +56,13 @@ func (s *Service) Connect(ctx context.Context, owner, role, cookie string) (doma
 			return e
 		}
 		var existingOwner, existingRole string
-		e := tx.QueryRow(ctx, "SELECT id,owner_id,coalesce(role,'') FROM platform_accounts WHERE platform_user_id=$1 FOR UPDATE", platformID).Scan(&accountID, &existingOwner, &existingRole)
+		var shared bool
+		e := tx.QueryRow(ctx, "SELECT id,owner_id,coalesce(role,''),shared_collector FROM platform_accounts WHERE platform_user_id=$1 FOR UPDATE", platformID).Scan(&accountID, &existingOwner, &existingRole, &shared)
 		if e != nil && e != pgx.ErrNoRows {
 			return e
+		}
+		if e == nil && shared {
+			return fault.New("ACCOUNT_BOUND", "此账号已作为全站答案采集账号")
 		}
 		if e == nil && existingOwner != owner {
 			return fault.New("ACCOUNT_BOUND", "该平台账号已绑定其他系统用户")
@@ -114,7 +118,7 @@ func (s *Service) Credential(ctx context.Context, owner, id string, revision int
 	var a domain.Account
 	var sealed secure.Sealed
 	a.Owner = owner
-	e := s.DB.Pool.QueryRow(ctx, `SELECT a.id,a.platform_user_id,a.role,a.revision,c.key_id,c.nonce,c.ciphertext FROM platform_accounts a JOIN platform_credentials c ON c.account_id=a.id JOIN users u ON u.id=a.owner_id WHERE a.id=$1 AND a.owner_id=$2 AND a.role IS NOT NULL AND a.valid AND u.verified AND NOT u.disabled`, id, owner).Scan(&a.ID, &a.UserID, &a.Role, &a.Revision, &sealed.KeyID, &sealed.Nonce, &sealed.Ciphertext)
+	e := s.DB.Pool.QueryRow(ctx, `SELECT a.id,a.platform_user_id,coalesce(a.role,'test'),a.revision,c.key_id,c.nonce,c.ciphertext,a.shared_collector FROM platform_accounts a JOIN platform_credentials c ON c.account_id=a.id JOIN users u ON u.id=a.owner_id WHERE a.id=$1 AND a.owner_id=$2 AND (a.role IS NOT NULL OR (a.shared_collector AND u.admin)) AND a.enabled AND a.valid AND u.verified AND NOT u.disabled`, id, owner).Scan(&a.ID, &a.UserID, &a.Role, &a.Revision, &sealed.KeyID, &sealed.Nonce, &sealed.Ciphertext, &a.Shared)
 	if e == pgx.ErrNoRows {
 		return a, "", fault.New("ACCOUNT_REQUIRED", "请重新连接平台账号")
 	}
@@ -166,7 +170,7 @@ func (s *Service) Invalidate(ctx context.Context, owner, id string, revision int
 	tag, e := s.DB.Pool.Exec(ctx, "UPDATE platform_accounts SET valid=false WHERE id=$1 AND owner_id=$2 AND revision=$3", id, owner, revision)
 	if e == nil && tag.RowsAffected() > 0 && s.OnChange != nil {
 		var role string
-		if e = s.DB.Pool.QueryRow(ctx, "SELECT role FROM platform_accounts WHERE id=$1", id).Scan(&role); e == nil {
+		if e = s.DB.Pool.QueryRow(ctx, "SELECT CASE WHEN shared_collector THEN 'shared' ELSE role END FROM platform_accounts WHERE id=$1", id).Scan(&role); e == nil {
 			s.OnChange(owner, role)
 		}
 	}

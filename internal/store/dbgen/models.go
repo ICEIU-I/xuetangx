@@ -204,14 +204,17 @@ type OperationAttempt struct {
 }
 
 type PlatformAccount struct {
-	ID             pgtype.UUID        `json:"id"`
-	OwnerID        pgtype.UUID        `json:"owner_id"`
-	PlatformUserID int64              `json:"platform_user_id"`
-	DisplayName    string             `json:"display_name"`
-	Role           pgtype.Text        `json:"role"`
-	Revision       int64              `json:"revision"`
-	Valid          bool               `json:"valid"`
-	ConnectedAt    pgtype.Timestamptz `json:"connected_at"`
+	ID              pgtype.UUID        `json:"id"`
+	OwnerID         pgtype.UUID        `json:"owner_id"`
+	PlatformUserID  int64              `json:"platform_user_id"`
+	DisplayName     string             `json:"display_name"`
+	Role            pgtype.Text        `json:"role"`
+	Revision        int64              `json:"revision"`
+	Valid           bool               `json:"valid"`
+	ConnectedAt     pgtype.Timestamptz `json:"connected_at"`
+	SharedCollector bool               `json:"shared_collector"`
+	Enabled         bool               `json:"enabled"`
+	Label           string             `json:"label"`
 }
 
 type PlatformCredential struct {

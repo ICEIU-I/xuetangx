@@ -84,39 +84,7 @@ func (e *Engine) prepare(ctx context.Context, owner, id string) {
 		if collector == nil {
 			_ = e.Jobs.Module(ctx, owner, id, "collector", "queued", "准备补齐题库")
 		}
-		test, err := e.Accounts.Require(ctx, owner, "test")
-		if err != nil {
-			_ = e.Jobs.Module(ctx, owner, id, "collector", "waiting_account", "请连接已加入同一班级的测试账号")
-		} else {
-			testInv, err := e.Catalog.Discover(ctx, test, job.Course.URL)
-			if err == nil {
-				err = e.Catalog.Exercises(ctx, test, &testInv)
-			}
-			if err != nil {
-				status := "blocked"
-				if fault.Code(err) == "ENROLLMENT_REQUIRED" {
-					status = "waiting_enrollment"
-				}
-				if fault.Code(err) == "ACCOUNT_REQUIRED" {
-					status = "waiting_account"
-				}
-				_ = e.Jobs.Module(ctx, owner, id, "collector", status, fault.Public(err))
-			} else {
-				selected := []domain.Exercise{}
-				for _, ex := range testInv.Exercises {
-					for _, original := range inv.Exercises {
-						if ex.LeafID == original.LeafID {
-							if ex.ExerciseID != original.ExerciseID {
-								ex.Error = "两账号题集标识不匹配"
-							}
-							selected = append(selected, ex)
-							break
-						}
-					}
-				}
-				e.launch(job, test, learning.Input{Kind: "collector", Course: inv.Course, Exercises: selected, Concurrency: job.Concurrency, UserID: test.UserID, Role: test.Role, SubmitUnanswered: true}, inv)
-			}
-		}
+		e.prepareCollector(ctx, job, a, inv, coverage.Missing > 0)
 	}
 	if homework != nil && homework.Status == "queued" {
 		e.launch(job, a, learning.Input{Kind: "homework", Course: inv.Course, Exercises: inv.Exercises, Concurrency: job.Concurrency, UserID: a.UserID, Role: a.Role}, inv)

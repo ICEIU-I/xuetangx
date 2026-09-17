@@ -115,6 +115,10 @@ func (e *Engine) wake(id, kind string) {
 	}
 }
 func (e *Engine) AccountChanged(owner, role string) {
+	if role == "shared" {
+		e.collectorsChanged()
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	a, err := e.Accounts.Get(ctx, owner, role)

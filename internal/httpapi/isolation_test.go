@@ -178,11 +178,37 @@ func TestHTTPIdentityCSRFAndEventIsolation(t *testing.T) {
 		t.Fatal("direct login failed", raw)
 	}
 	ordinaryCookies := res.Cookies()
-	for _, path := range []string{"/api/admin/users", "/api/admin/jobs", "/api/admin/metrics", "/api/admin/conflicts"} {
+	for _, path := range []string{"/api/admin/users", "/api/admin/jobs", "/api/admin/metrics", "/api/admin/conflicts", "/api/admin/collectors", "/api/admin/users/" + one.owner} {
 		res, _ = request("GET", path, "", ordinaryCookies, "", "")
 		if res.StatusCode != 403 {
 			t.Fatal("ordinary user entered admin", path, res.StatusCode)
 		}
+	}
+
+	res, raw = request("POST", "/api/admin/collectors", `{"label":"shared","cookie":"csrftoken=csrf; sessionid=202"}`, one.cookies, one.csrf, "")
+	if res.StatusCode != 200 {
+		t.Fatal("collector create", raw)
+	}
+	res, raw = request("GET", "/api/admin/collectors", "", one.cookies, "", "")
+	if res.StatusCode != 200 || strings.Contains(raw, "sessionid") || strings.Contains(raw, "csrf") {
+		t.Fatal("collector metadata", raw)
+	}
+	var collectors struct{ Accounts []struct{ ID string } }
+	json.Unmarshal([]byte(raw), &collectors)
+	if len(collectors.Accounts) != 1 {
+		t.Fatal(raw)
+	}
+	res, raw = request("GET", "/api/workflow/state", "", ordinaryCookies, "", "")
+	if res.StatusCode != 200 || strings.Contains(raw, collectors.Accounts[0].ID) || !strings.Contains(raw, `"sharedCollectors":1`) {
+		t.Fatal("collector privacy", raw)
+	}
+	res, raw = request("GET", "/api/admin/users/"+one.owner, "", one.cookies, "", "")
+	if res.StatusCode != 200 {
+		t.Fatal("user detail", raw)
+	}
+	var status string
+	if err = db.Pool.QueryRow(ctx, "SELECT status FROM jobs WHERE id=$1", job).Scan(&status); err != nil || status != "paused" {
+		t.Fatal("collector addition resumed paused job", status, err)
 	}
 	res, raw = request("GET", "/api/admin/jobs", "", one.cookies, "", "")
 	if res.StatusCode != 200 || !strings.Contains(raw, job) {
