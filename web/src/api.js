@@ -1,14 +1,19 @@
 // 前端 -> 后端 API 封装 + SSE 订阅
-async function j(url, opts) {
-  const r = await fetch(url, opts);
+export async function request(url, opts = {}) {
+  const csrf = document.cookie.split('; ').find(value => value.startsWith('xuetangx_csrf='))?.split('=')[1] || '';
+  const r = await fetch(url, { credentials: 'same-origin', ...opts, headers: { ...(opts.headers || {}), ...(opts.method && opts.method !== 'GET' ? { 'X-CSRF-Token': csrf } : {}) } });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    if (data.code === 'AUTH_REQUIRED') window.dispatchEvent(new Event('auth-required'));
+    const error = new Error(data.error || `HTTP ${r.status}`); error.code = data.code; throw error;
+  }
   return data;
 }
 
+const j = request;
 export const api = {
   session: () => j('/api/session'),
-  workflowState: () => j('/api/workflow/state'),
+  workflowState: (offset = 0, limit = 25) => j(`/api/workflow/state?offset=${offset}&limit=${limit}`),
   workflowStart: (courseUrl, concurrency = 3) => j('/api/workflow/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
   workflowControl: (id, action) => j(`/api/workflow/${encodeURIComponent(id)}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
   testConnect: (cookie) => j('/api/test-cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),
@@ -29,7 +34,7 @@ export const api = {
   videoRunCourse: (courseUrl, concurrency) => j('/api/video/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
   collectAnswers: (courseUrl, submitUnanswered, concurrency = 3) => j('/api/answer-bank/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, submitUnanswered, concurrency }) }),
   stopAnswers: () => j('/api/answer-bank/stop', { method: 'POST' }),
-  answerDatabase: (classroomId) => j(`/api/answer-bank/${encodeURIComponent(classroomId)}`),
+  answerDatabase: (classroomId, offset = 0) => j(`/api/answer-bank/${encodeURIComponent(classroomId)}?limit=50&offset=${offset}`),
   articleScan: (courseUrl) => j('/api/article/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
   articleRun: (courseUrl, concurrency = 3) => j('/api/article/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
   articleStop: () => j('/api/article/stop', { method: 'POST' }),

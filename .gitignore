@@ -24,3 +24,10 @@ bin/
 .local/
 secrets/
 coverage.out
+internal/webassets/assets/*
+!internal/webassets/assets/.gitkeep
+
+# Local tunnel credentials and server configuration
+tunnel.yml
+.env.*
+!.env.example

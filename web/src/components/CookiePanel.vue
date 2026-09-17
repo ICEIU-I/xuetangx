@@ -5,8 +5,7 @@ import { api } from '../api';
 const props = defineProps({ session: Object });
 const emit = defineEmits(['connected', 'disconnected']);
 
-const LS_KEY = 'xt_console_cookie';
-const cookie = ref(localStorage.getItem(LS_KEY) || '');  // 回填记住的 cookie
+const cookie = ref('');
 const busy = ref(false);
 const err = ref('');
 
@@ -15,17 +14,14 @@ async function connect() {
   busy.value = true;
   try {
     const r = await api.connect(cookie.value);
-    localStorage.setItem(LS_KEY, cookie.value.trim()); // 默认记住
+    cookie.value = '';
     emit('connected', r.user);
   } catch (e) {
     err.value = e.message;
-    // cookie 失效则清掉记忆，避免下次自动用坏的
-    if (/无效|过期|csrftoken/.test(e.message)) localStorage.removeItem(LS_KEY);
   } finally { busy.value = false; }
 }
 async function disconnect() {
   await api.disconnect();
-  localStorage.removeItem(LS_KEY);   // 断开即忘记
   cookie.value = '';
   emit('disconnected');
 }

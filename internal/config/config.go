@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -11,12 +12,37 @@ import (
 type Config struct {
 	DatabaseURL, Listen, PublicURL, KeyFile, SMTPAddress, SMTPUser, SMTPPassword, SMTPFrom string
 	Development                                                                            bool
+	MailEnabled                                                                            bool
+	RequireEmailVerification                                                               bool
+	TrustedProxies                                                                         []*net.IPNet
 	GlobalJobs, UserJobs                                                                   int
 }
 
 func Load() (Config, error) {
 	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Listen: env("LISTEN_ADDR", "127.0.0.1:8788"), PublicURL: env("PUBLIC_BASE_URL", "http://127.0.0.1:8788"), KeyFile: os.Getenv("CREDENTIAL_KEY_FILE"), Development: os.Getenv("APP_ENV") == "development", GlobalJobs: 10, UserJobs: 2,
 		SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPPassword: os.Getenv("SMTP_PASSWORD"), SMTPFrom: os.Getenv("SMTP_FROM")}
+	var mailErr error
+	c.MailEnabled, mailErr = strconv.ParseBool(env("MAIL_ENABLED", "true"))
+	if mailErr != nil {
+		return c, fmt.Errorf("invalid MAIL_ENABLED")
+	}
+	c.RequireEmailVerification, mailErr = strconv.ParseBool(env("REQUIRE_EMAIL_VERIFICATION", "true"))
+	if mailErr != nil {
+		return c, fmt.Errorf("invalid REQUIRE_EMAIL_VERIFICATION")
+	}
+	if c.RequireEmailVerification && !c.MailEnabled {
+		return c, fmt.Errorf("email verification requires MAIL_ENABLED")
+	}
+	for _, raw := range strings.Split(os.Getenv("TRUSTED_PROXY_CIDRS"), ",") {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(strings.TrimSpace(raw))
+		if err != nil {
+			return c, fmt.Errorf("invalid TRUSTED_PROXY_CIDRS")
+		}
+		c.TrustedProxies = append(c.TrustedProxies, network)
+	}
 	if v := os.Getenv("DATABASE_URL_FILE"); v != "" {
 		b, e := os.ReadFile(v)
 		if e != nil {
@@ -50,7 +76,7 @@ func Load() (Config, error) {
 			*dst = n
 		}
 	}
-	if !c.Development && (c.SMTPAddress == "" || c.SMTPFrom == "") {
+	if !c.Development && c.MailEnabled && (c.SMTPAddress == "" || c.SMTPFrom == "") {
 		return c, fmt.Errorf("SMTP_ADDRESS and SMTP_FROM are required")
 	}
 	return c, nil

@@ -81,7 +81,7 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
     </div>
     <details class="test-account" :open="testOpen || waiting" @toggle="testOpen = $event.target.open">
       <summary>测试账号 <span class="dim">{{ testAccount.connected ? `已连接 · ${testAccount.userId}` : '可选，缺少答案时使用' }}</span></summary>
-      <p class="dim">测试账号需先加入同一课程班级，采集时可能消耗作答机会；凭据仅在本次服务运行期间保留。</p>
+      <p class="dim">测试账号需先加入同一课程班级，采集时可能消耗作答机会；凭据加密保存，断开账号时删除。</p>
       <div v-if="!testAccount.connected"><textarea id="test-cookie" v-model="testCookie" rows="2" autocomplete="off" placeholder="粘贴测试账号 Cookie"></textarea><button :disabled="!testCookie.trim() || testBusy" @click="connectTest">{{ testBusy ? '验证中…' : '连接测试账号' }}</button></div>
       <div v-else class="row"><span class="tag ok">测试账号已就绪</span><button @click="disconnectTest">断开测试账号</button></div>
       <p v-if="testError" class="error" role="alert">{{ testError }}</p>
