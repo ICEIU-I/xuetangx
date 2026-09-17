@@ -72,7 +72,7 @@ function createArticleService({ transport = http, courseService = courses, sleep
     return leaf;
   }
 
-  async function completeCourse({ courseUrl, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function completeCourse({ courseUrl, concurrency = 1 }, cookie, { signal, onProgress = () => {} } = {}) {
     concurrency = getConcurrency(concurrency);
     onProgress({ stage: 'scanning', message: '扫描选定课程的全部图文…' });
     const inventory = await scanCourse(courseUrl, cookie, { signal, onProgress });

@@ -5,7 +5,7 @@ function createCollector({ rpc, progress, signal }) {
     const result = { total: input.missing.length, processed: 0, captured: 0, failed: 0, results: [] };
     const wanted = new Map(input.missing.map(item => [`${item.leafId}:${item.problemId}`, item]));
     const seen = new Set(), unavailable = new Map();
-    await workers(input.exercises, input.concurrency || 3, async exercise => {
+    await workers(input.exercises, input.concurrency || 1, async exercise => {
       if (exercise.error) { unavailable.set(exercise.leafId, exercise.error); return; }
       for (const problem of exercise.problems) {
         signal.throwIfAborted(); const item = wanted.get(`${exercise.leafId}:${problem.problem_id}`); if (!item) continue;

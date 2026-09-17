@@ -25,7 +25,7 @@ function fixture({ queryError = false, done = false } = {}) {
 test('homework loads all database exercises and uses live SKU, class and sign for submission', async () => {
   const { service, submits, queries } = fixture();
   const result = await service.complete({ courseUrl: course.url }, 'cookie');
-  assert.equal(result.total, 5); assert.equal(result.correct, 5); assert.equal(result.concurrency, 3);
+  assert.equal(result.total, 5); assert.equal(result.correct, 5); assert.equal(result.concurrency, 1);
   assert.ok(queries.every(query => query.options.skuId === 78));
   assert.ok(submits.every(job => job.classroomId === 12 && job.sign === 'real-course' && job.skuId === 78 && job.body.answer[0] === 'B'));
 });
@@ -42,7 +42,7 @@ test('already answered questions are skipped and are not reported as failures', 
 test('homework runner guards duplicate starts and supports cancellation', async () => {
   let runningSignal;
   const runner = createHomeworkRunner({ sessions: { isConnected: () => true, getCookie: () => 'secret' }, service: { complete: async (input, cookie, { signal }) => {
-    assert.equal(input.concurrency, 3); runningSignal = signal;
+    assert.equal(input.concurrency, 1); runningSignal = signal;
     await new Promise((resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
   } } });
   runner.startRun({ courseUrl: course.url }); assert.throws(() => runner.startRun({ courseUrl: course.url }), /已有/);

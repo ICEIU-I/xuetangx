@@ -6,7 +6,7 @@ async function main(mode) {
   const args = process.argv.slice(2), urls = args.filter(value => !value.startsWith('--'));
   const allowed = new Set(['--complete', '--course', '--submit-unanswered']);
   if (args.some(value => value.startsWith('--') && !allowed.has(value) && !value.startsWith('--concurrency=') && !value.startsWith('--duration='))) throw new Error('未知参数');
-  if (mode !== 'check' && urls.length !== 1) throw new Error(`用法：npm run ${mode} -- <课程学习页链接> [--concurrency=3]`);
+  if (mode !== 'check' && urls.length !== 1) throw new Error(`用法：npm run ${mode} -- <课程学习页链接> [--concurrency=1]`);
   if (mode !== 'check') parseCourseUrl(urls[0]);
   const limit = concurrency(args.find(value => value.startsWith('--concurrency='))?.slice(14));
   const base = `http://127.0.0.1:${process.env.PORT || 8788}`;

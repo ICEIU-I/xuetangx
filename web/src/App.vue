@@ -13,7 +13,7 @@ import WorkflowPanel from './components/workflow/WorkflowPanel.vue';
 const advancedOpen = ref(false);
 
 const session = reactive({ connected: false, user: null });
-const homeworkCourses = ref([]), homeworkUrl = ref(''), homeworkConcurrency = ref(3);
+const homeworkCourses = ref([]), homeworkUrl = ref(''), homeworkConcurrency = ref(1);
 const stats = reactive({ totalQ: null, doneQ: null, rightQ: null });
 
 // —— 标题打字机 ——

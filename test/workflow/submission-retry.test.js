@@ -82,6 +82,15 @@ test('legacy unknown and interrupted pending submissions resume after confirmed 
   }
 });
 
+test('unreachable-network errors and legacy incorrectly nonretryable records recover after confirmation', async t => {
+  for (const code of ['EHOSTUNREACH', 'ENETUNREACH', 'ENETDOWN', 'EHOSTDOWN']) {
+    const f = await fixture(t); await f.seed({ state: 'unknown', retryable: false, lastError: code, networkRetries: 0 });
+    assert.equal((await f.submit()).is_correct, true); assert.deepEqual(f.counts(), { posts: 1, reads: 3 });
+    const live = await fixture(t, { post: async count => { if (count === 1) throw Object.assign(networkError(), { code }); return ok(answered); } });
+    assert.equal((await live.submit()).is_correct, true); assert.deepEqual(live.counts(), { posts: 2, reads: 3 });
+  }
+});
+
 test('automatic retry budget survives recreated service and successful outcomes still reconcile', async t => {
   let accepted = false;
   const f = await fixture(t, { post: async () => { throw networkError(); }, get: async (n, p) => ({ problems: [{ ...p, user: accepted ? answered : { my_count: '0' } }] }) });

@@ -42,7 +42,7 @@ function createHomework({ rpc, request, progress, signal, subscribe }) {
       }
     }
     try {
-      const outcomes = await Promise.allSettled(Array.from({ length: input.concurrency || 3 }, async () => {
+      const outcomes = await Promise.allSettled(Array.from({ length: input.concurrency || 1 }, async () => {
         try { return await worker(); } catch (error) { fatal = error; wake(); throw error; }
       }));
       const error = outcomes.find(outcome => outcome.status === 'rejected'); if (error) throw error.reason;

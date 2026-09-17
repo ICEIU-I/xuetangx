@@ -116,7 +116,7 @@ function createAnswerService({ transport = http, courses = courseService, store 
     return { course, exercises: [...exercises.values()] };
   }
 
-  async function collect({ courseUrl, submitUnanswered = false, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function collect({ courseUrl, submitUnanswered = false, concurrency = 1 }, cookie, { signal, onProgress = () => {} } = {}) {
     concurrency = getConcurrency(concurrency);
     if (typeof submitUnanswered !== 'boolean') throw new Error('采集模式无效');
     const target = courseService.parseCourseUrl(courseUrl);

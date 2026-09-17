@@ -23,7 +23,7 @@ test('server wait hints and fallback are applied only to rate-limit responses', 
   assert.equal(limits.observe(1, { status: 429, json: { detail: 'Expected available in 4 seconds.' } }).readyAt, 5000);
   assert.equal(limits.observe(2, { status: 429, json: { msg: '请等待2秒' } }).readyAt, 3000);
   assert.equal(limits.observe(3, { status: 429 }).readyAt, 61000);
-  assert.equal(limits.observe(4, { status: 403, json: { msg: 'access denied' } }), null);
+  assert.equal(limits.observe(4, { status: 403, json: { msg: 'access denied' } }).accessReadyAt, 61000);
   assert.equal(isRateLimited({ status: 200, json: { success: false, detail: 'Request was throttled. Expected available in 3 seconds.' } }), true);
 });
 test('roles are isolated, same-user roles rejected and summaries never contain cookies', async () => {
@@ -66,16 +66,27 @@ test('queued submissions resume after the server-requested wait', async t => {
   await broker.request('primary', 1, 'POST', SUBMIT, {});
   assert.equal(sent, 2); assert.ok(Date.now() - started >= 30); assert.equal(serverLimits.snapshot(1).blocked, false);
 });
-test('broker keeps three in-flight submissions and fairly schedules ordinary requests', async t => {
+test('broker serializes all upstream requests and fairly schedules ordinary requests', async t => {
   const releases = [], starts = []; let active = 0, peak = 0;
   const broker = createBroker({ accounts: await accounts(), transport: {
     post: async () => { starts.push('submit'); active++; peak = Math.max(peak, active); await new Promise(resolve => releases.push(resolve)); active--; return { status: 200 }; },
     get: async () => { starts.push('read'); return { status: 200 }; },
   } }); t.after(() => broker.close());
   const promises = Array.from({ length: 5 }, () => broker.request('primary', 1, 'POST', SUBMIT, {}));
-  await broker.request('primary', 1, 'GET', '/read');
-  assert.deepEqual(starts.slice(0, 3), ['submit', 'submit', 'read']);
   const interval = setInterval(() => releases.splice(0).forEach(resolve => resolve()), 5);
-  try { await Promise.all(promises); } finally { clearInterval(interval); }
-  assert.ok(peak <= 3);
+  try {
+    await broker.request('primary', 1, 'GET', '/read');
+    assert.deepEqual(starts.slice(0, 3), ['submit', 'submit', 'read']);
+    await Promise.all(promises);
+  } finally { clearInterval(interval); }
+  assert.equal(peak, 1);
+});
+
+test('reads and writes across both accounts never overlap in serial mode', async t => {
+  let active = 0, peak = 0, finished = 0;
+  async function request() { active++; peak = Math.max(peak, active); await new Promise(resolve => setTimeout(resolve, 5)); active--; finished++; return { status: 200 }; }
+  const broker = createBroker({ accounts: await accounts(), transport: { get: request, post: request } }); t.after(() => broker.close());
+  await Promise.all([broker.request('primary', 1, 'GET', '/read'), broker.request('primary', 1, 'POST', SUBMIT, {}),
+    broker.request('test', 2, 'GET', '/read'), broker.request('primary', 1, 'POST', '/video-log/heartbeat/', {}), broker.request('test', 2, 'POST', SUBMIT, {})]);
+  assert.equal(peak, 1); assert.equal(finished, 5);
 });

@@ -8,7 +8,7 @@ function createMedia({ rpc, request, leaf, verify, progress, signal }) {
   async function media(input) {
     const units = input.units, result = { total: units.length, processed: 0, completed: 0, skipped: 0, failed: 0, results: [] };
     const emit = message => progress({ ...result, message });
-    await workers(units, input.concurrency || 3, async unit => {
+    await workers(units, input.concurrency || 1, async unit => {
       signal.throwIfAborted(); emit(`处理：${unit.title}`); let outcome;
       try {
         if (completeValue(unit.progress)) outcome = { status: 'skipped' };

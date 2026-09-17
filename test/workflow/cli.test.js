@@ -21,7 +21,7 @@ test('CLI connects only to the local master and submits a single orchestrated jo
   });
   let output = ''; child.stdout.on('data', chunk => { output += chunk; }); child.stderr.on('data', chunk => { output += chunk; });
   const [code] = await once(child, 'exit'); assert.equal(code, 0, output); assert.equal(finished, true);
-  const start = requests.find(item => item.url === '/api/workflow/start'); assert.equal(start.body.concurrency, 3);
+  const start = requests.find(item => item.url === '/api/workflow/start'); assert.equal(start.body.concurrency, 1);
   assert.equal(start.body.courseUrl, 'https://www.xuetangx.com/learn/space/s/s/12');
   assert.equal(requests.filter(item => item.method === 'POST').length, 1);
 });

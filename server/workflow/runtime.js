@@ -37,6 +37,7 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   const ready = jobsStore.list().then(values => {
     for (const value of values) {
       if (!value?.id || !value.course?.classroomId) continue;
+      value.concurrency = 1;
       if (!['done', 'partial', 'stopped'].includes(value.status)) {
         value.status = 'paused'; value.message = '服务已重启；重新连接账号后可继续';
         for (const module of Object.values(value.modules)) if (ACTIVE.has(module.status) || module.status.startsWith('waiting_')) module.status = 'paused';
@@ -83,7 +84,8 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     if (job.control || stoppedPreparation) await Promise.allSettled([...(settling.get(job.id) || [])]);
   }
   function waiting(job, actor, state) {
-    const module = job.modules[actor.kind]; module.status = 'waiting_rate_limit'; module.message = '服务端返回限流，等待后自动重试';
+    const module = job.modules[actor.kind]; module.status = 'waiting_rate_limit';
+    module.message = state.reason === 'access_denied' ? '平台返回 HTTP 403，账号冷却后自动重试' : '服务端返回限流，等待后自动重试';
     log(job, actor.kind, module.message);
     publish(job).catch(() => {});
   }
@@ -96,9 +98,10 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   const { spawn } = createProcessHost({ actors, exits, accounts, forkImpl, handleRpc, publish, log, restartModule: (...args) => pipeline.restartModule(...args), isClosed: () => closed });
   const pipeline = createPipeline({ accounts, catalog, bank, actors, preparing, collecting, beginOperation, spawn, send, actorKey, publish, log });
   const { refreshCoverage, launchCollector, prepare, restartModule } = pipeline;
-  async function start({ courseUrl, modules = ['video', 'article', 'discussion', 'homework'], concurrency = 3, submitUnanswered = true, targets, unitId } = {}) {
+  async function start({ courseUrl, modules = ['video', 'article', 'discussion', 'homework'], concurrency = 1, submitUnanswered = true, targets, unitId } = {}) {
     await ready; if (closed) throw new Error('调度器已关闭');
-    concurrency = getConcurrency(concurrency); const target = parseCourseUrl(courseUrl), primary = accounts.get('primary');
+    getConcurrency(concurrency); concurrency = 1;
+    const target = parseCourseUrl(courseUrl), primary = accounts.get('primary');
     if (!Array.isArray(modules) || !modules.length || modules.some(kind => !KINDS.includes(kind))) throw new Error('任务模块无效');
     if (typeof submitUnanswered !== 'boolean' || (targets != null && (!Array.isArray(targets) || targets.some(value => typeof value !== 'string')))) throw new Error('任务参数无效');
     if (unitId != null && (!Number.isSafeInteger(unitId) || unitId <= 0 || modules.length !== 1 || modules[0] !== 'video')) throw new Error('单视频任务参数无效');
@@ -119,7 +122,8 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
   async function control(id, action, kind) {
     await ready; const job = jobs.get(id); if (!job) throw new Error('任务不存在');
     if (accounts.summary('primary').userId !== job.primaryId) throw new Error('请连接此任务的正式账号');
-    if (kind && !KINDS.includes(kind)) throw new Error('模块无效');
+    job.concurrency = 1;
+    if (kind && (!KINDS.includes(kind) || !job.modules[kind])) throw new Error('模块无效');
     if (['pause', 'stop'].includes(action)) {
       const status = action === 'pause' ? 'paused' : 'stopped'; if (!kind) job.control = status;
       log(job, kind || 'course', status === 'paused' ? '任务已暂停' : '任务已停止');
@@ -127,9 +131,16 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     } else if (['resume', 'retry'].includes(action)) {
       job.control = null;
       if (!job.inventory || !kind) {
-        await stopActors(job, Object.keys(job.modules), 'paused'); job.control = null;
-        job.requested.forEach(name => { job.modules[name] = { status: 'queued', message: '回查并继续' }; }); prepare(job).catch(() => {});
-      } else { job.modules[kind].status = 'queued'; restartModule(job, kind).catch(error => { job.modules[kind].status = 'blocked'; job.modules[kind].message = error.message; publish(job).catch(() => {}); }); }
+        const unfinished = Object.keys(job.modules).filter(name => job.modules[name].status !== 'done');
+        await stopActors(job, unfinished, 'paused'); job.control = null;
+        unfinished.forEach(name => { job.modules[name] = { ...job.modules[name], status: 'queued', message: '回查并继续' }; });
+        prepare(job).catch(() => {});
+      } else {
+        await stopActors(job, [kind], 'paused');
+        Object.assign(job.modules[kind], { status: 'queued', message: '重新查询平台状态后重试' });
+        log(job, kind, job.modules[kind].message);
+        restartModule(job, kind).catch(error => { job.modules[kind].status = error.code === 'ACCOUNT_REQUIRED' ? 'waiting_account' : 'blocked'; job.modules[kind].message = error.message; log(job, kind, error.message); publish(job).catch(() => {}); });
+      }
       await publish(job);
     } else throw new Error('任务操作无效');
     return view(job);

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 const props = defineProps({ session: Object, task: Object });
-const concurrency = ref(3);
+const concurrency = ref(1);
 const courses = ref([]), courseUrl = ref(''), submitUnanswered = ref(false);
 const loading = ref(false), starting = ref(false), error = ref(''), saved = ref(null);
 const running = computed(() => props.task.status === 'running');
@@ -63,7 +63,7 @@ async function stop() { try { await api.stopAnswers(); } catch (e) { error.value
     <p class="mode-note" :class="{ warn: submitUnanswered }">{{ submitUnanswered ? '此模式会提交测试选项，消耗作答机会并可能影响成绩；已作答题不会重复提交。' : '当前仅读取后端已公开的标准答案，不提交作答。' }}</p>
     <div class="row actions">
       <label for="answer-concurrency">并发练习数</label>
-      <select id="answer-concurrency" class="concurrency" v-model.number="concurrency" :disabled="running || starting"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
+      <select id="answer-concurrency" class="concurrency" v-model.number="concurrency" :disabled="running || starting"><option :value="1">1</option></select>
       <button class="primary" :disabled="!session.connected || !courseUrl || running || loading || starting" @click="start">{{ submitUnanswered ? '提交并采集本课程答案' : '获取本课程已公开答案' }}</button>
       <button :disabled="!selected || running" @click="readSaved">查看本地答案</button>
       <button v-if="running" class="danger" @click="stop">停止采集</button>

@@ -11,7 +11,7 @@ const problem = id => ({ problem_id: id, index: id, content: { Type: 'SingleChoi
 async function until(predicate, timeout = 6000) {
   const start = Date.now(); while (!await predicate()) { if (Date.now() - start > timeout) throw Error('等待测试条件超时'); await new Promise(resolve => setTimeout(resolve, 10)); }
 }
-async function fixture(t, { withTest = false, enrolledTest = true, pendingMedia = false, uncertainSubmission = false, slowDiscovery = false } = {}) {
+async function fixture(t, { withTest = false, enrolledTest = true, pendingMedia = false, uncertainSubmission = false, slowDiscovery = false, faults = {} } = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'workflow-runtime-'));
   const accounts = createAccounts({ authenticate: async cookie => ({ user_id: Number(cookie) }) });
   await accounts.connect('primary', '1'); if (withTest) await accounts.connect('test', '2');
@@ -22,6 +22,7 @@ async function fixture(t, { withTest = false, enrolledTest = true, pendingMedia 
   const transport = {
     async get(endpoint, cookie) {
       const userId = Number(cookie); reads.push({ endpoint, userId });
+      if (faults.exercise && endpoint.includes('/get_exercise_list/')) return { status: 403, retryAfter: '0.005' };
       if (slowDiscovery && endpoint.includes('/user-courses/')) await new Promise(resolve => setTimeout(resolve, 20));
       if (endpoint.includes('/user-courses/')) return response({ pages: 1, product_list: userId === 2 && !enrolledTest ? [] : [{ classroom_id: 12, sign: 's', course_sign: 's', name: '课程' }] });
       if (endpoint.includes('/course/chapter')) return response({ course_chapter: [{ id: 31, leaf_type: 0, name: '视频' }, { id: 32, leaf_type: 3, name: '图文' }, { id: 33, leaf_type: 4, name: '讨论' }, { id: 34, leaf_type: 6, name: '作业' }] });
@@ -42,6 +43,7 @@ async function fixture(t, { withTest = false, enrolledTest = true, pendingMedia 
       if (endpoint === '/api/v1/lms/learn/chapter/schedule') return response({ leaf_schedule: completedMedia.has(body.leaf_id) ? 1 : 0 });
       assert.equal(endpoint, '/api/v1/lms/exercise/problem_apply/'); const userId = Number(cookie);
       posts.push({ userId, body, time: Date.now() });
+      if (faults.submission) return { status: 403, retryAfter: '0.005' };
       const correct = body.answer[0] === 'B';
       const data = { my_count: 1, is_show_answer: true, answer: ['B'], my_answer: body.answer, is_right: correct, is_correct: correct };
       done[userId].set(body.problem_id, data);
@@ -98,7 +100,8 @@ test('a complete cached bank needs no test account and deduplicates standalone s
   const inventory = await runtime.catalog.discover({ role: 'primary', userId: 1 }, courseUrl);
   inventory.exercises = await runtime.catalog.exercises({ role: 'primary', userId: 1 }, inventory);
   for (const p of inventory.exercises[0].problems) await runtime.bank.save(inventory, inventory.exercises[0], p, { is_show_answer: true, answer: ['B'] }, { source: 'fixture' });
-  const first = await runtime.start({ courseUrl });
+  const first = await runtime.start({ courseUrl, concurrency: 3 });
+  assert.equal(first.concurrency, 1, 'old client concurrency settings cannot override serial mode');
   const second = await runtime.start({ courseUrl, modules: ['homework'] }); assert.equal(first.id, second.id);
   await until(async () => (await runtime.get(first.id)).status === 'done');
   assert.equal(posts.length, 3); assert.ok(posts.every(post => post.userId === 1));
@@ -178,4 +181,36 @@ test('obsolete persisted quotas do not block or affect the current runtime', asy
   assert.equal(state.rateLimits.primary.blocked, false);
   assert.equal('quotas' in state, false);
   assert.equal(await fs.readFile(path.join(folder, '1.json'), 'utf8'), '{obsolete-and-broken');
+});
+
+test('retry after rejected discovery rescans homework and leaves completed modules untouched', async t => {
+  const faults = { exercise: true };
+  const { runtime, posts } = await fixture(t, { withTest: true, faults });
+  const job = await runtime.start({ courseUrl });
+  await until(async () => (await runtime.get(job.id)).status === 'partial');
+  const before = await runtime.get(job.id);
+  assert.equal(before.modules.homework.status, 'blocked'); assert.equal(before.modules.article.status, 'done');
+  assert.ok(before.logs.some(entry => /403/.test(entry.message)));
+  faults.exercise = false;
+  await runtime.control(job.id, 'resume');
+  await until(async () => (await runtime.get(job.id)).status === 'done');
+  assert.equal(posts.filter(p => p.userId === 1).length, 3);
+  assert.deepEqual((await runtime.get(job.id)).modules.article, before.modules.article);
+});
+
+test('module retry refreshes answers and skips a question completed after the blocked run', async t => {
+  const faults = { submission: true };
+  const { runtime, posts, done } = await fixture(t, { faults });
+  const inventory = await runtime.catalog.discover({ role: 'primary', userId: 1 }, courseUrl);
+  inventory.exercises = await runtime.catalog.exercises({ role: 'primary', userId: 1 }, inventory);
+  for (const p of inventory.exercises[0].problems) await runtime.bank.save(inventory, inventory.exercises[0], p, { is_show_answer: true, answer: ['B'] }, { source: 'fixture' });
+  const job = await runtime.start({ courseUrl });
+  await until(async () => (await runtime.get(job.id)).status === 'partial');
+  assert.equal((await runtime.get(job.id)).modules.homework.status, 'blocked');
+  const denied = posts.length;
+  faults.submission = false; done[1].set(101, { my_count: 1, is_right: true });
+  await runtime.control(job.id, 'retry', 'homework');
+  await until(async () => (await runtime.get(job.id)).status === 'done');
+  assert.deepEqual(posts.slice(denied).map(p => p.body.problem_id).sort(), [102, 103]);
+  assert.equal((await runtime.get(job.id)).modules.homework.skipped, 1);
 });

@@ -10,19 +10,19 @@ const { createAnswerRunner } = require('../server/answer-runner');
 const { createHomeworkRunner } = require('../server/runner');
 const courseUrl = 'https://www.xuetangx.com/learn/space/a/a/12';
 
-test('default worker limit is three and stopping waits for active operations', async () => {
+test('default worker limit is one and stopping waits for active operations', async () => {
   let active = 0, peak = 0, finished = 0;
   await workers([1, 2, 3, 4, 5, 6], undefined, async () => {
     active++; peak = Math.max(peak, active); await new Promise(resolve => setImmediate(resolve)); active--; finished++;
   });
-  assert.equal(peak, 3); assert.equal(finished, 6);
+  assert.equal(peak, 1); assert.equal(finished, 6);
 });
 
 test('HTTP routes allow all task types concurrently and stopping one does not stop others', async t => {
   const sessions = { isConnected: () => true, getCookie: () => 'cookie', summary: () => ({ connected: true }), clear() {} };
   const gates = [];
   const hold = async (input, cookie, { signal }) => {
-    assert.equal(input.concurrency ?? 3, 3);
+    assert.equal(input.concurrency ?? 1, 1);
     return new Promise((resolve, reject) => { gates.push(resolve); signal.addEventListener('abort', () => reject(signal.reason), { once: true }); });
   };
   const videoRunner = createVideoRunner({ sessions, service: { completeCourse: hold } });

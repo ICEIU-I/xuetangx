@@ -14,7 +14,7 @@ const scanning = ref(false);
 const courses = ref([]);
 const courseUrl = ref('');
 const loadingCourses = ref(false);
-const concurrency = ref(3);
+const concurrency = ref(1);
 let revision = 0;
 const running = computed(() => props.task.status === 'running');
 const locked = computed(() => running.value || starting.value);
@@ -111,7 +111,7 @@ async function stop() {
     <div class="row batch-actions">
       <label for="video-concurrency">并发视频数</label>
       <select id="video-concurrency" v-model.number="concurrency" :disabled="locked">
-        <option :value="1">1</option><option :value="2">2</option><option :value="3">3</option>
+        <option :value="1">1</option>
       </select>
       <button class="primary" :disabled="!session.connected || !courseUrl || locked || scanning || busy || loadingCourses" @click="startCourse">一键完成本课程全部视频</button>
       <button :disabled="!session.connected || !courseUrl || locked || scanning || busy || loadingCourses" @click="scan">{{ scanning ? '扫描视频中…' : '查看本课程视频' }}</button>

@@ -2,7 +2,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { api, subscribeEvents } from '../../api';
 const props = defineProps({ session: Object });
-const courses = ref([]), courseUrl = ref(''), concurrency = ref(3), jobs = ref([]), rateLimits = ref({});
+const courses = ref([]), courseUrl = ref(''), concurrency = ref(1), jobs = ref([]), rateLimits = ref({});
 const testAccount = ref({ connected: false }), testCookie = ref(''), testOpen = ref(false);
 const busy = ref(false), testBusy = ref(false), error = ref(''), testError = ref(''), now = ref(Date.now());
 const accountId = computed(() => props.session.connected ? String(props.session.user?.user_id || props.session.user?.id || '') : '');
@@ -30,9 +30,9 @@ async function start() {
   catch (e) { error.value = e.message; }
   finally { busy.value = false; }
 }
-async function control(action) {
+async function control(action, module) {
   if (!job.value) return; busy.value = true; error.value = '';
-  try { const result = await api.workflowControl(job.value.id, action); updateJob(result.job); }
+  try { const result = await api.workflowControl(job.value.id, action, module); updateJob(result.job); }
   catch (e) { error.value = e.message; }
   finally { busy.value = false; }
 }
@@ -66,11 +66,11 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
 
 <template>
   <section class="panel workflow-panel" aria-labelledby="workflow-title">
-    <div class="workflow-heading"><div><h2 id="workflow-title">一键完成课程</h2><p class="dim">视频、图文、讨论同时推进；已有答案直接作答，缺失答案由测试账号补齐。</p></div><span class="tag" :class="job?.status === 'done' ? 'ok' : running ? 'run' : ''">{{ names[job?.status] || '准备就绪' }}</span></div>
+    <div class="workflow-heading"><div><h2 id="workflow-title">一键完成课程</h2><p class="dim">全部任务串行请求；已有答案直接作答，缺失答案由测试账号补齐。遇到 403 会冷却后自动重试。</p></div><span class="tag" :class="job?.status === 'done' ? 'ok' : running ? 'run' : ''">{{ names[job?.status] || '准备就绪' }}</span></div>
     <label for="workflow-course">选择课程</label>
     <div class="course-line">
       <select id="workflow-course" v-model="courseUrl" :disabled="!session.connected || busy || running"><option value="" disabled>请选择已选课程</option><option v-for="course in courses" :key="course.classroomId" :value="course.url">{{ course.title }}</option></select>
-      <label for="workflow-concurrency">每类任务并发</label><select id="workflow-concurrency" v-model.number="concurrency" :disabled="running"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
+      <label for="workflow-concurrency">每类任务并发</label><select id="workflow-concurrency" v-model.number="concurrency" :disabled="running"><option :value="1">1</option></select>
       <button :disabled="!session.connected || busy || running" @click="load">刷新课程</button>
     </div>
     <div class="row primary-actions">
@@ -88,7 +88,7 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
       <p v-if="job?.modules.collector?.message && job.modules.collector.status !== 'done'" class="notice">{{ job.modules.collector.message }}</p>
     </details>
     <div class="status-grid">
-      <div v-for="role in ['primary','test']" :key="role" class="status-card"><span class="dim">{{ role === 'primary' ? '正式账号提交状态' : '测试账号采集状态' }}</span><strong>{{ !rateLimits[role] ? '未连接' : countdown(rateLimits[role]) ? '限流等待' : '可提交' }}</strong><span class="dim">{{ countdown(rateLimits[role]) ? `服务端限流，${countdown(rateLimits[role])} 秒后重试` : '仅在服务端返回限流时等待' }}</span></div>
+      <div v-for="role in ['primary','test']" :key="role" class="status-card"><span class="dim">{{ role === 'primary' ? '正式账号请求状态' : '测试账号请求状态' }}</span><strong>{{ !rateLimits[role] ? '未连接' : countdown(rateLimits[role]) ? '冷却等待' : '可请求' }}</strong><span class="dim">{{ countdown(rateLimits[role]) ? `${rateLimits[role]?.reason === 'access_denied' ? '平台拒绝访问（403）' : '服务端限流'}，${countdown(rateLimits[role])} 秒后自动重试` : '收到平台拒绝或限流后等待重试' }}</span></div>
       <div class="status-card"><span class="dim">本课程题库</span><strong>{{ job?.coverage ? `${job.coverage.captured} / ${job.coverage.total}` : '待扫描' }}</strong><span class="dim">{{ job?.coverage?.missing ? `缺少 ${job.coverage.missing} 条答案，边采集边作答` : '仅使用匹配版本的标准答案' }}</span></div>
     </div>
     <div class="module-grid">
@@ -96,7 +96,8 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
         <div class="row"><strong>{{ item.icon }} {{ item.title }}</strong><span class="spacer"></span><span class="dim">{{ names[job?.modules[item.kind]?.status] || '待开始' }}</span></div>
         <div class="module-count">{{ job?.modules[item.kind]?.processed || 0 }} <span class="dim">/ {{ job?.modules[item.kind]?.total ?? '—' }}</span></div>
         <progress :value="percent(job?.modules[item.kind])" max="100" :aria-label="item.title + '进度'"></progress>
-        <p class="dim">{{ job?.modules[item.kind]?.message || '启动后自动处理未完成项目' }}</p>
+        <p :class="['blocked', 'error'].includes(job?.modules[item.kind]?.status) ? 'error' : 'dim'">{{ job?.modules[item.kind]?.status === 'done' ? '已回查完成' : job?.modules[item.kind]?.message || '启动后自动处理未完成项目' }}</p>
+        <button v-if="['blocked','error','partial','paused','stopped','waiting_account'].includes(job?.modules[item.kind]?.status)" :disabled="busy || !session.connected" @click="control('retry', item.kind)">重试{{ item.title }}</button>
       </article>
     </div>
     <div v-if="failures.length" class="failures"><strong>需要处理的项目</strong><div v-for="(item,index) in failures" :key="index">{{ item.title || (item.problemId ? `题目 ${item.problemId}` : `单元 ${item.unitId}`) }}：{{ item.error }}</div></div>

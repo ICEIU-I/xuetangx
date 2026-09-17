@@ -51,7 +51,7 @@ function createHomeworkService({ transport = http, answers = store, courseServic
     sections.sort((a, b) => a.leafId - b.leafId);
     return { course, sections, totalQ: sections.reduce((n, s) => n + s.total, 0), doneQ: sections.reduce((n, s) => n + s.done, 0), rightQ: sections.reduce((n, s) => n + s.right, 0) };
   }
-  async function complete({ courseUrl, targets, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function complete({ courseUrl, targets, concurrency = 1 }, cookie, { signal, onProgress = () => {} } = {}) {
     concurrency = getConcurrency(concurrency);
     onProgress({ type: 'phase', msg: '从所选课程答案库读取习题，并核对当前账号的作答状态…' });
     const inventory = await scan(courseUrl, cookie, { signal });

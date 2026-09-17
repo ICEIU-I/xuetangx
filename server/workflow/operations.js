@@ -24,7 +24,7 @@ function createOperations({ accounts, bank, catalog, effects, call, now, waiting
     actor.controller.signal.throwIfAborted(); accounts.get(actor.account.role, actor.account.userId);
     if (method === 'request') {
       if (!allowedRequest(actor, args)) throw errorOf('子进程请求超出任务范围', 'INVALID_REQUEST');
-      return call(actor.account, args.method, args.endpoint, args.body, { signal: actor.controller.signal });
+      return call(actor.account, args.method, args.endpoint, args.body, { signal: actor.controller.signal, onWait: state => waiting(job, actor, state) });
     }
     if (method === 'submit-question') return submitQuestion(job, actor, args);
     if (method === 'save-answer' && actor.kind === 'collector') {

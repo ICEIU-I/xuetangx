@@ -60,7 +60,7 @@ function createCatalog({ request }) {
         exercise.problems = list.problems;
         for (const problem of list.problems) { validId(problem.problem_id); if (!problem.content?.Type) throw new Error('题目类型缺失'); }
       } catch (error) {
-        if (signal?.aborted || error.code === 'ACCOUNT_REQUIRED' || error.status === 401) throw error;
+        if (signal?.aborted || ['ACCOUNT_REQUIRED', 'ACCESS_DENIED', 'RATE_LIMITED'].includes(error.code) || [401, 403, 429].includes(error.status)) throw error;
         exercise.error = error.message;
       }
       result.push(exercise);

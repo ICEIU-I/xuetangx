@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 const props = defineProps({ session: Object, task: Object });
-const concurrency = ref(3);
+const concurrency = ref(1);
 const courses = ref([]), courseUrl = ref(''), inventory = ref(null), error = ref('');
 const loading = ref(false), scanning = ref(false), starting = ref(false);
 const running = computed(() => props.task.status === 'running');
@@ -40,7 +40,7 @@ watch(() => props.task.status, value => { if (['done', 'partial', 'stopped'].inc
 <template>
   <section class="panel discussion-panel" aria-labelledby="discussion-title">
     <h2 id="discussion-title" class="panel-title">讨论题进度 / DISCUSSIONS</h2>
-    <p class="dim">在指定课程的每个未完成讨论单元发布“1”。默认 3 并发执行，跳过已完成或已发表的单元，并回查完成状态。</p>
+    <p class="dim">在指定课程的每个未完成讨论单元发布“1”。串行执行，跳过已完成或已发表的单元，并回查完成状态。</p>
     <label for="discussion-course">选择课程</label>
     <div class="course-row">
       <select id="discussion-course" v-model="courseUrl" :disabled="!session.connected || busy">
@@ -51,7 +51,7 @@ watch(() => props.task.status, value => { if (['done', 'partial', 'stopped'].inc
     </div>
     <div class="row actions">
       <label for="discussion-concurrency">并发数</label>
-      <select id="discussion-concurrency" class="concurrency" v-model.number="concurrency" :disabled="running || starting"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
+      <select id="discussion-concurrency" class="concurrency" v-model.number="concurrency" :disabled="running || starting"><option :value="1">1</option></select>
       <button class="primary" :disabled="!canStart" @click="start">一键完成本课程全部讨论（发1）</button>
       <button :disabled="!canStart" @click="scan">{{ scanning ? '查询中…' : '查看讨论题进度' }}</button>
       <button v-if="running" class="danger" @click="stop">停止发布</button>

@@ -2,7 +2,8 @@ const { setTimeout: sleep } = require('node:timers/promises');
 const { fingerprint, storedAnswer, submitBody, probeBody } = require('./questions');
 const { SUBMIT } = require('./broker');
 const errorOf = (message, code) => Object.assign(new Error(message), { code });
-const transient = new Set(['ECONNRESET', 'ETIMEDOUT', 'EAI_AGAIN', 'ECONNREFUSED', 'ENOTFOUND', 'EPIPE', 'REMOTE_TRANSIENT']);
+const { transientCodes } = require('../../src/network/errors');
+const transient = new Set([...transientCodes, 'REMOTE_TRANSIENT']);
 const fatal = new Set(['ACCOUNT_REQUIRED', 'ACCESS_DENIED', 'RATE_LIMITED']);
 const MAX_RETRIES = 2;
 
@@ -71,7 +72,9 @@ function createSubmissions({ bank, catalog, effects, call, now = Date.now, waiti
       }
       if (prior && !['rejected', 'not_sent'].includes(prior.state)) {
         const confirmed = await reconcile(); if (confirmed) return confirmed;
-        if (['posted', 'confirmed'].includes(prior.state) || prior.retryable === false) throw errorOf('平台曾接收提交或错误不支持自动重试，请核对作答状态', 'REVIEW_REQUIRED');
+        if (['posted', 'confirmed'].includes(prior.state)) throw errorOf('平台曾确认接收，但当前回查尚未确认，请核对作答状态', 'REVIEW_REQUIRED');
+        // Older versions incorrectly marked unreachable-host/network failures as permanent.
+        if (prior.retryable === false && !transient.has(prior.lastError)) throw errorOf('上次错误不支持自动重试，请核对作答状态', 'REVIEW_REQUIRED');
         // retry_ready already reserves this retry before a possible pause/restart.
         if (prior.state !== 'retry_ready') await retry();
       } else if (prior?.state === 'not_sent') await retry(true);

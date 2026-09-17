@@ -10,7 +10,7 @@ const { createAnswerService } = require('../src/answer-bank');
 const { createAnswerStore } = require('../src/answer-store');
 const course = { classroomId: 12, sign: 's', courseSign: 'c', url: 'https://www.xuetangx.com/learn/space/s/c/12' };
 
-for (const kind of ['article', 'discussion', 'answers']) test(`${kind} runs three units concurrently and preserves every result`, async t => {
+for (const kind of ['article', 'discussion', 'answers']) test(`${kind} defaults to serial units and preserves every result`, async t => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'parallel-units-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const type = { article: 3, discussion: 4, answers: 6 }[kind];
@@ -54,7 +54,7 @@ for (const kind of ['article', 'discussion', 'answers']) test(`${kind} runs thre
   if (kind === 'article') result = await createArticleService(options).completeCourse({ courseUrl: course.url }, 'cookie');
   if (kind === 'discussion') result = await createDiscussionService({ ...options, journal }).completeCourse({ courseUrl: course.url }, 'cookie');
   if (kind === 'answers') result = await createAnswerService({ transport, courses: options.courseService, store, sleep: async () => {}, requestInterval: 0 }).collect({ courseUrl: course.url }, 'cookie');
-  assert.equal(peak, 3);
+  assert.equal(peak, 1);
   if (kind === 'answers') {
     const saved = await store.read(12);
     assert.equal(result.capturedAnswers, 6);

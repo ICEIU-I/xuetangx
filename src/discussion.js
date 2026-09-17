@@ -66,7 +66,7 @@ function createDiscussionService({ transport = http, courseService = courses, jo
     return { course, discussions, total: discussions.length, completed: discussions.filter(item => item.completed).length };
   }
 
-  async function completeCourse({ courseUrl, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function completeCourse({ courseUrl, concurrency = 1 }, cookie, { signal, onProgress = () => {} } = {}) {
     concurrency = getConcurrency(concurrency);
     const target = courses.parseCourseUrl(courseUrl);
     return journal.withLock(target.classroomId, async () => {

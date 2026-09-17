@@ -3,7 +3,7 @@ const https = require('node:https');
 const { setTimeout: wait } = require('node:timers/promises');
 const { COOKIE } = require('../config');
 const HOST = 'www.xuetangx.com';
-const transientCodes = new Set(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'ENOTFOUND', 'EPIPE']);
+const { transientCodes } = require('./network/errors');
 const getCsrf = cookie => /csrftoken=([^;]+)/.exec(cookie || COOKIE || '')?.[1] || '';
 
 function responseError(response, label = '请求') {

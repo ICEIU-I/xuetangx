@@ -1,4 +1,4 @@
-function concurrency(value = 3) {
+function concurrency(value = 1) {
   const number = Number(value);
   if (!Number.isInteger(number) || number < 1 || number > 3) throw new Error('并发数须为 1–3');
   return number;

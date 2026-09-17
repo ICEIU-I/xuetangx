@@ -38,7 +38,7 @@ watch(() => props.logs.length, async () => {
         <option value="" disabled>请选择课程</option><option v-for="course in courses || []" :key="course.classroomId" :value="course.url">{{ course.title }}</option>
       </select>
       <label for="homework-concurrency">并发数</label>
-      <select id="homework-concurrency" :value="concurrency" :disabled="running" @change="emit('concurrency', Number($event.target.value))"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
+      <select id="homework-concurrency" :value="concurrency" :disabled="running" @change="emit('concurrency', Number($event.target.value))"><option :value="1">1</option></select>
     </div>
     <!-- 进度条 -->
     <div class="prog-head row">
