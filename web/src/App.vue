@@ -5,6 +5,7 @@ import CookiePanel from './components/CookiePanel.vue';
 import StatBar from './components/StatBar.vue';
 import StatusGrid from './components/StatusGrid.vue';
 import RunConsole from './components/RunConsole.vue';
+import VideoPanel from './components/VideoPanel.vue';
 
 const session = reactive({ connected: false, user: null });
 const stats = reactive({ totalQ: null, doneQ: null, rightQ: null });
@@ -33,6 +34,7 @@ const selected = ref([]);          // 选中要跑的作业
 const loadingStatus = ref(false);
 const runState = reactive({ status: 'idle', total: 0, done: 0, correct: 0, failed: 0, ratePerMin: 0, etaSec: 0, rateLimited: false });
 const logs = ref([]);
+const videoState = reactive({ status: 'idle', sent: 0, total: 0, message: '', result: null });
 let es = null;
 
 function fmtTime(ts) {
@@ -91,6 +93,8 @@ function clearLogs() { logs.value = []; }
 
 // 处理 SSE 事件
 function handleEvent(evt) {
+  if (evt.type === 'video') { Object.assign(videoState, evt); return; }
+  if (evt.type === 'hello' && evt.video) Object.assign(videoState, evt.video);
   if (evt.type === 'progress') {
     Object.assign(runState, pick(evt));
     pushLog(evt.mark, evt.name, evt.problemId, evt.msg);
@@ -157,6 +161,7 @@ onUnmounted(() => { if (es) es.close(); if (typeTimer) clearTimeout(typeTimer); 
 
   <StatBar :stats="stats" :runState="runState" />
   <CookiePanel :session="session" @connected="onConnected" @disconnected="onDisconnected" />
+  <VideoPanel :session="session" :task="videoState" />
   <RunConsole
     :runState="runState" :logs="logs" :connected="session.connected" :selectedCount="selected.length"
     @start="startRun" @stop="stopRun" @clear="clearLogs"

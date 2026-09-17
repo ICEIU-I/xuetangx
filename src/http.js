@@ -20,20 +20,21 @@ function baseHeaders(cookie, extra = {}) {
   };
 }
 
-function request(method, path, body, cookie) {
+function request(method, path, body, cookie, options = {}) {
   return new Promise((resolve, reject) => {
     const data = body != null ? JSON.stringify(body) : null;
     const headers = baseHeaders(cookie, method === 'POST'
       ? { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(cookie), 'Content-Length': Buffer.byteLength(data) }
       : {});
+    Object.assign(headers, options.headers);
     let settled = false;
     const finish = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
-    const req = https.request({ hostname: HOST, path, method, headers, timeout: 12000 }, (res) => {
+    const req = https.request({ hostname: HOST, path, method, headers, timeout: 12000, signal: options.signal }, (res) => {
       let d = '';
       res.on('data', c => d += c);
       res.on('end', () => {
         let json = null; try { json = JSON.parse(d); } catch {}
-        finish(resolve, { status: res.statusCode, json, raw: d });
+        finish(resolve, { status: res.statusCode, json, raw: d, retryAfter: res.headers['retry-after'] });
       });
     });
     req.on('timeout', () => { req.destroy(); finish(reject, new Error('请求超时')); });
@@ -43,8 +44,8 @@ function request(method, path, body, cookie) {
   });
 }
 
-const get = (path, cookie) => request('GET', path, null, cookie);
-const post = (path, body, cookie) => request('POST', path, body, cookie);
+const get = (path, cookie, options) => request('GET', path, null, cookie, options);
+const post = (path, body, cookie, options) => request('POST', path, body, cookie, options);
 
 // 校验 cookie 是否已配置且有效（登录态）。返回用户信息 data。
 async function assertLoggedIn(cookie) {
