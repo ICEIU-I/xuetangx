@@ -31,5 +31,5 @@ onMounted(()=>load());
   </section>
 </template>
 <style scoped>
-.admin-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;overflow-wrap:anywhere;border-bottom:1px solid #29374b}.admin-row span{min-width:0}.admin-row small{display:block;color:#9aabc2;margin-top:6px}.row{flex-wrap:wrap}.pager{margin:14px 0 28px}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:24px 0}.metric{border:1px solid #29374b;border-radius:8px;padding:16px}.metric span{font-size:12px;color:#9aabc2}.metric strong{display:block;font-size:24px;margin-top:10px}.error{color:#ff9292}
+.admin-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;overflow-wrap:anywhere;border-bottom:1px solid var(--border)}.admin-row span{min-width:0}.admin-row small{display:block;color:var(--text-dim);margin-top:6px}.row{flex-wrap:wrap}.pager{margin:14px 0 28px}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin:24px 0}.metric{border:1px solid var(--border);border-radius:8px;padding:16px}.metric span{font-size:12px;color:var(--text-dim)}.metric strong{display:block;font-size:24px;margin-top:10px}.error{color:var(--text-error)}
 </style>

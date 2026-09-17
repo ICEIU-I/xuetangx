@@ -6,6 +6,12 @@
   --border: rgba(203, 214, 227, 0.7);
   --border-bright: #c2cfe0;
   --text: #16202e;
+  --input-bg: #ffffff;
+  --action-bg: #1765d1;
+  --action-text: #ffffff;
+  --text-accent: #087a73;
+  --text-success: #166b40;
+  --text-error: #b72537;
   --text-dim: #6b7a90;
   --accent: #0bb3a8;       /* 青 */
   --accent-2: #2f7cf6;     /* 蓝 */
@@ -18,7 +24,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; height: 100%; color-scheme: light; }
 
 /* 动态渐变背景：缓慢流动的极光 */
 body {
