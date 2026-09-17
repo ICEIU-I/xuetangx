@@ -6,8 +6,9 @@ const props = defineProps({
   logs: Array,        // [{ts,mark,name,problemId,msg}]
   connected: Boolean,
   selectedCount: Number,
+  courses: Array, courseUrl: String, concurrency: Number,
 });
-const emit = defineEmits(['start', 'stop', 'clear']);
+const emit = defineEmits(['start', 'stop', 'clear', 'course', 'concurrency']);
 
 const logBox = ref(null);
 const running = computed(() => props.runState.status === 'running');
@@ -31,6 +32,14 @@ watch(() => props.logs.length, async () => {
   <div class="panel">
     <div class="panel-title">运行控制台 / RUN CONSOLE</div>
 
+    <div class="row" style="margin-bottom:14px">
+      <label for="homework-course">答题课程</label>
+      <select id="homework-course" :value="courseUrl" :disabled="!connected || running" @change="emit('course', $event.target.value)">
+        <option value="" disabled>请选择课程</option><option v-for="course in courses || []" :key="course.classroomId" :value="course.url">{{ course.title }}</option>
+      </select>
+      <label for="homework-concurrency">并发数</label>
+      <select id="homework-concurrency" :value="concurrency" :disabled="running" @change="emit('concurrency', Number($event.target.value))"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
+    </div>
     <!-- 进度条 -->
     <div class="prog-head row">
       <span class="mono-num accent">{{ runState.done || 0 }}</span>
@@ -45,7 +54,7 @@ watch(() => props.logs.length, async () => {
 
     <!-- 控制按钮 -->
     <div class="row" style="margin:12px 0">
-      <button class="primary" :disabled="!connected || running" @click="emit('start')">
+      <button class="primary" :disabled="!connected || !courseUrl || running" @click="emit('start')">
         ▶ 开始{{ selectedCount ? `（选中 ${selectedCount} 套）` : '（全部未完成）' }}
       </button>
       <button class="danger" :disabled="!running" @click="emit('stop')">■ 停止</button>
@@ -67,6 +76,7 @@ watch(() => props.logs.length, async () => {
 </template>
 
 <style scoped>
+select { max-width: 100%; padding: 9px; border: 1px solid var(--border); border-radius: 9px; background: white; font: inherit; }
 .prog-head { font-size: 12px; margin-bottom: 6px; }
 .prog { height: 8px; background: rgba(230,235,242,0.8); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; position: relative; }
 .prog-fill {

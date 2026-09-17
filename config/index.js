@@ -12,7 +12,7 @@ module.exports = {
   SIGN: process.env.SIGN || '',
 
   // —— 运行参数 ——
-  CONCURRENCY: num(process.env.CONCURRENCY, 1),                  // 提交并发数（串行=1，避免撞限速）
+  CONCURRENCY: num(process.env.CONCURRENCY, 3),                  // 提交并发数（默认3）
   MAX_RETRY: num(process.env.MAX_RETRY, 6),                     // 单题限速退避重试次数
   SUBMIT_INTERVAL_MS: num(process.env.SUBMIT_INTERVAL_MS, 1200), // 每题提交间隔(配速,~50题/分钟)
 

@@ -247,7 +247,7 @@ function createVideoService({ transport = http, sleep = wait, now = Date.now, pa
     return { course, totalVideos: course.videos.length };
   }
 
-  async function completeCourse({ courseUrl, concurrency = 1 }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function completeCourse({ courseUrl, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
     concurrency = Number(concurrency);
     if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3) throw new Error('视频并发数须为 1–3');
     const inventory = await scanCourse(courseUrl, cookie, { signal, onProgress });

@@ -1,3 +1,4 @@
+const { concurrency: getConcurrency, workers } = require('./tasks');
 const { createHash } = require('node:crypto');
 const { setTimeout: wait } = require('node:timers/promises');
 const http = require('./http');
@@ -69,11 +70,11 @@ function createAnswerService({ transport = http, courses = courseService, store 
   async function call(method, endpoint, body, cookie, context) {
     for (let attempt = 0; ; attempt++) {
       context.signal?.throwIfAborted();
-      const delay = Math.max(0, nextRequest - now(), method === 'POST' ? nextSubmission - now() : 0);
-      if (delay) await sleep(delay, undefined, { signal: context.signal });
+      const slot = Math.max(now(), nextRequest, method === 'POST' ? nextSubmission : 0);
+      nextRequest = slot + requestInterval;
+      if (method === 'POST') nextSubmission = slot + submitInterval;
+      if (slot > now()) await sleep(slot - now(), undefined, { signal: context.signal });
       context.signal?.throwIfAborted();
-      nextRequest = now() + requestInterval;
-      if (method === 'POST') nextSubmission = now() + submitInterval;
       const opts = { signal: context.signal, headers: { xtbz: 'xt', Referer: context.courseUrl, 'X-Requested-With': 'XMLHttpRequest' } };
       const response = await (method === 'GET' ? transport.get(endpoint, cookie, opts) : transport.post(endpoint, body, cookie, opts));
       if (response.status === 429 && attempt < maxRetries) {
@@ -115,7 +116,8 @@ function createAnswerService({ transport = http, courses = courseService, store 
     return { course, exercises: [...exercises.values()] };
   }
 
-  async function collect({ courseUrl, submitUnanswered = false }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function collect({ courseUrl, submitUnanswered = false, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+    concurrency = getConcurrency(concurrency);
     if (typeof submitUnanswered !== 'boolean') throw new Error('采集模式无效');
     const target = courseService.parseCourseUrl(courseUrl);
     return store.withLock(target.classroomId, async () => {
@@ -127,14 +129,17 @@ function createAnswerService({ transport = http, courses = courseService, store 
       for (const exercise of Object.values(database.exercises)) exercise.active = false;
       for (const exercise of inventory.exercises) database.exercises[exercise.leaf_id] = { ...database.exercises[exercise.leaf_id], ...exercise, active: true, scanned: false, error: null };
       let submitted = 0;
+      let writing = Promise.resolve();
       const checkpoint = async message => {
         database.updatedAt = new Date(now()).toISOString();
-        database.lastRun = { ...summary(database), submitted, mode: submitUnanswered ? 'submit' : 'visible' };
-        await store.save(database);
+        database.lastRun = { ...summary(database), submitted, concurrency, mode: submitUnanswered ? 'submit' : 'visible' };
+        const snapshot = structuredClone(database);
+        writing = writing.then(() => store.save(snapshot));
+        await writing;
         onProgress({ ...database.lastRun, stage: 'collecting', message });
       };
       await checkpoint(`发现 ${inventory.exercises.length} 套练习`);
-      for (const unit of inventory.exercises) {
+      await workers(inventory.exercises, concurrency, async unit => {
         signal?.throwIfAborted();
         const exercise = database.exercises[unit.leaf_id];
         try {
@@ -196,13 +201,15 @@ function createAnswerService({ transport = http, courses = courseService, store 
           if (signal?.aborted) throw error;
           if (error.code || error.stopCollection) {
             database.lastRun.stoppedReason = error.message;
-            await store.save(database);
+            const snapshot = structuredClone(database);
+            writing = writing.then(() => store.save(snapshot));
+            await writing;
             throw error;
           }
           exercise.error = error.message;
           await checkpoint(`${exercise.section}：${error.message}`);
         }
-      }
+      }, { signal });
       await checkpoint('采集结束，答案已写入本地 JSON 数据库');
       return { ...database.lastRun, file: store.filePath(target.classroomId) };
     });

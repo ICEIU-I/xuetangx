@@ -8,10 +8,10 @@ async function main() {
   const url = args.find(arg => !arg.startsWith('--'));
   const course = args.includes('--course');
   const concurrencyArg = args.find(arg => arg.startsWith('--concurrency='));
-  const concurrency = concurrencyArg ? Number(concurrencyArg.slice(14)) : 1;
+  const concurrency = concurrencyArg ? Number(concurrencyArg.slice(14)) : 3;
   if (!url || args.filter(arg => !arg.startsWith('--')).length !== 1 || (course && args.some(arg => arg.startsWith('--duration=')))
     || (!course && concurrencyArg) || args.some(arg => arg.startsWith('--') && !['--complete', '--course'].includes(arg) && !arg.startsWith('--duration=') && !arg.startsWith('--concurrency='))) {
-    throw new Error('用法：npm run video -- <课程链接> --course [--complete] [--concurrency=1] 或 <视频URL> [--complete] [--duration=总秒数]；默认仅查询');
+    throw new Error('用法：npm run video -- <课程链接> --course [--complete] [--concurrency=3] 或 <视频URL> [--complete] [--duration=总秒数]；默认仅查询');
   }
   if (!Number.isInteger(concurrency) || concurrency < 1 || concurrency > 3) throw new Error('视频并发数须为 1–3');
   if (course) video.parseCourseUrl(url);

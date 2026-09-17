@@ -1,3 +1,4 @@
+const { concurrency: getConcurrency, workers } = require('./tasks');
 const { setTimeout: wait } = require('node:timers/promises');
 const http = require('./http');
 const courses = require('./video');
@@ -14,9 +15,10 @@ function createArticleService({ transport = http, courseService = courses, sleep
   async function get(endpoint, cookie, context) {
     for (let attempt = 0; ; attempt++) {
       context.signal?.throwIfAborted();
-      if (nextRequest > now()) await sleep(nextRequest - now(), undefined, { signal: context.signal });
+      const slot = Math.max(now(), nextRequest);
+      nextRequest = slot + interval;
+      if (slot > now()) await sleep(slot - now(), undefined, { signal: context.signal });
       context.signal?.throwIfAborted();
-      nextRequest = now() + interval;
       const response = await transport.get(endpoint, cookie, { signal: context.signal,
         headers: { xtbz: 'xt', Referer: context.courseUrl, 'X-Requested-With': 'XMLHttpRequest' } });
       if (response.status === 429 && attempt < maxRetries) {
@@ -30,7 +32,7 @@ function createArticleService({ transport = http, courseService = courses, sleep
         continue;
       }
       if (response.status !== 200 || response.json?.success !== true) {
-        const error = new Error(`图文接口请求失败（HTTP ${response.status}）`);
+        const error = new Error(http.responseError(response, '图文接口请求'));
         error.stopBatch = [401, 403, 429].includes(response.status);
         throw error;
       }
@@ -70,14 +72,15 @@ function createArticleService({ transport = http, courseService = courses, sleep
     return leaf;
   }
 
-  async function completeCourse({ courseUrl }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function completeCourse({ courseUrl, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+    concurrency = getConcurrency(concurrency);
     onProgress({ stage: 'scanning', message: '扫描选定课程的全部图文…' });
     const inventory = await scanCourse(courseUrl, cookie, { signal, onProgress });
     const { course, articles } = inventory;
     const context = { signal, onProgress, courseUrl: course.url };
-    const result = { course, total: articles.length, processed: 0, completed: 0, skipped: 0, failed: 0, results: [] };
+    const result = { course, concurrency, total: articles.length, processed: 0, completed: 0, skipped: 0, failed: 0, results: [] };
     const update = extra => onProgress({ ...result, ...extra });
-    for (const article of articles) {
+    await workers(articles, concurrency, async article => {
       signal?.throwIfAborted();
       update({ stage: 'marking', current: article.title, message: `处理 ${result.processed + 1}/${result.total}：${article.title}` });
       const item = { leafId: article.leafId, title: article.title };
@@ -109,8 +112,7 @@ function createArticleService({ transport = http, courseService = courses, sleep
       }
       result.processed++; result.results.push(item);
       update({ message: `${result.processed}/${result.total} · 新标记 ${result.completed} · 已完成跳过 ${result.skipped} · 失败 ${result.failed}` });
-      if (result.stoppedReason) break;
-    }
+    }, { signal, shouldStop: () => !!result.stoppedReason });
     signal?.throwIfAborted();
     return result;
   }

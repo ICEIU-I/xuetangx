@@ -11,6 +11,7 @@ import ArticlePanel from './components/ArticlePanel.vue';
 import DiscussionPanel from './components/DiscussionPanel.vue';
 
 const session = reactive({ connected: false, user: null });
+const homeworkCourses = ref([]), homeworkUrl = ref(''), homeworkConcurrency = ref(3);
 const stats = reactive({ totalQ: null, doneQ: null, rightQ: null });
 
 // —— 标题打字机 ——
@@ -57,18 +58,24 @@ async function refreshSession() {
 async function onConnected(user) {
   session.connected = true;
   session.user = user;
-  await refreshStatus();
+  try {
+    const result = await api.videoCourses();
+    homeworkCourses.value = result.courses;
+    homeworkUrl.value = result.courses[0]?.url || '';
+    await refreshStatus();
+  } catch (error) { pushLog('fail', '课程加载失败', null, error.message); }
 }
 function onDisconnected() {
   session.connected = false; session.user = null;
+  homeworkCourses.value = []; homeworkUrl.value = ''; selected.value = [];
   sections.value = []; stats.totalQ = stats.doneQ = stats.rightQ = null;
 }
 
 async function refreshStatus() {
-  if (!session.connected) return;
+  if (!session.connected || !homeworkUrl.value) return;
   loadingStatus.value = true;
   try {
-    const r = await api.status();
+    const r = await api.status(homeworkUrl.value);
     sections.value = r.sections;
     stats.totalQ = r.totalQ; stats.doneQ = r.doneQ; stats.rightQ = r.rightQ;
   } catch (e) {
@@ -91,7 +98,7 @@ async function startRun() {
   Object.assign(runState, { status: 'running', total: 0, done: 0, correct: 0, failed: 0, ratePerMin: 0, etaSec: 0, rateLimited: false });
   pushLog('', '>>> 启动任务', null, selected.value.length ? `选中 ${selected.value.length} 套` : '全部未完成');
   try {
-    await api.run(selected.value.length ? [...selected.value] : null);
+    await api.run(selected.value.length ? [...selected.value] : null, homeworkUrl.value, homeworkConcurrency.value);
   } catch (e) { pushLog('fail', '启动失败', null, e.message); runState.status = 'error'; }
 }
 async function stopRun() { await api.stop(); pushLog('', '<<< 停止请求已发送', null, ''); }
@@ -99,6 +106,8 @@ function clearLogs() { logs.value = []; }
 
 // 处理 SSE 事件
 function handleEvent(evt) {
+  if (evt.type === 'reset') { Object.assign(runState, evt); return; }
+  if (evt.type === 'hello') Object.assign(runState, pick(evt));
   if (evt.type === 'discussion') { Object.assign(discussionState, evt); return; }
   if (evt.type === 'article') { Object.assign(articleState, evt); return; }
   if (evt.type === 'answer-bank') { Object.assign(answerState, evt); return; }
@@ -111,24 +120,24 @@ function handleEvent(evt) {
     Object.assign(runState, pick(evt));
     pushLog(evt.mark, evt.name, evt.problemId, evt.msg);
     // 实时更新状态板对应格
-    bumpSection(evt.name);
+    if (evt.mark !== 'fail') bumpSection(evt.name);
   } else if (evt.type === 'start') {
     runState.total = evt.total;
     pushLog('', '>>> 待提交', null, `${evt.total} 题 / ${evt.sets} 套`);
   } else if (evt.type === 'phase') {
     pushLog('', '···', null, evt.msg);
-  } else if (evt.type === 'done' || evt.type === 'stopped' || evt.type === 'error') {
+  } else if (evt.type === 'done' || evt.type === 'partial' || evt.type === 'stopped' || evt.type === 'error') {
     Object.assign(runState, pick(evt));
     runState.status = evt.type;
     runState.rateLimited = false;
     pushLog('', evt.type === 'done' ? '=== 完成' : '=== ' + evt.type, null,
-      `提交 ${evt.done} 对 ${evt.correct} 失败 ${evt.failed}`);
+      evt.msg || `提交 ${evt.done} 对 ${evt.correct} 失败 ${evt.failed}，已做跳过 ${evt.skipped || 0}`);
     refreshStatus(); // 跑完刷新真实状态
   }
 }
 function pick(e) {
   const { status, total, done, correct, failed, ratePerMin, etaSec, rateLimited } = e;
-  const o = {}; for (const k of ['total','done','correct','failed','ratePerMin','etaSec','rateLimited']) if (e[k] !== undefined) o[k] = e[k];
+  const o = {}; for (const k of ['status','total','done','correct','failed','ratePerMin','etaSec','rateLimited']) if (e[k] !== undefined) o[k] = e[k];
   return o;
 }
 function bumpSection(name) {
@@ -178,6 +187,8 @@ onUnmounted(() => { if (es) es.close(); if (typeTimer) clearTimeout(typeTimer); 
   <DiscussionPanel :session="session" :task="discussionState" />
   <AnswerPanel :session="session" :task="answerState" />
   <RunConsole
+    :courses="homeworkCourses" :courseUrl="homeworkUrl" :concurrency="homeworkConcurrency"
+    @course="value => { homeworkUrl = value; selected = []; refreshStatus(); }" @concurrency="homeworkConcurrency = $event"
     :runState="runState" :logs="logs" :connected="session.connected" :selectedCount="selected.length"
     @start="startRun" @stop="stopRun" @clear="clearLogs"
   />

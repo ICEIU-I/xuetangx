@@ -1,3 +1,4 @@
+const { concurrency: getConcurrency } = require('../src/tasks');
 const { EventEmitter } = require('node:events');
 const article = require('../src/article');
 const { parseCourseUrl } = require('../src/video');
@@ -12,10 +13,11 @@ function createArticleRunner({ service = article, sessions = session } = {}) {
     if (task) throw new Error('已有图文任务在运行');
     if (!sessions.isConnected()) throw new Error('请先连接登录态');
     parseCourseUrl(input?.courseUrl);
+    input = { ...input, concurrency: getConcurrency(input.concurrency) };
     const token = ++generation, cookie = sessions.getCookie();
     controller = new AbortController(); const signal = controller.signal;
     state = { status: 'running', total: 0, processed: 0, completed: 0, skipped: 0, failed: 0, results: [],
-      courseUrl: input.courseUrl, message: '准备标记课程图文…', result: null };
+      courseUrl: input.courseUrl, concurrency: input.concurrency, message: '准备标记课程图文…', result: null };
     emit();
     task = Promise.resolve().then(() => service.completeCourse(input, cookie, { signal, onProgress(update) {
       if (token === generation) { state = { ...state, ...update }; emit(); }

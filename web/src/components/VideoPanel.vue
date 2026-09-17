@@ -14,7 +14,7 @@ const scanning = ref(false);
 const courses = ref([]);
 const courseUrl = ref('');
 const loadingCourses = ref(false);
-const concurrency = ref(1);
+const concurrency = ref(3);
 let revision = 0;
 const running = computed(() => props.task.status === 'running');
 const locked = computed(() => running.value || starting.value);

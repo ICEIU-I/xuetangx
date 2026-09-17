@@ -1,3 +1,4 @@
+const { concurrency: getConcurrency } = require('../src/tasks');
 const { EventEmitter } = require('node:events');
 const service = require('../src/answer-bank');
 const { parseCourseUrl } = require('../src/video');
@@ -13,11 +14,12 @@ function createAnswerRunner({ collector = service, sessions = session } = {}) {
     if (task) throw new Error('已有答案采集任务在运行');
     if (!sessions.isConnected()) throw new Error('请先连接登录态');
     parseCourseUrl(input?.courseUrl);
+    input = { ...input, concurrency: getConcurrency(input.concurrency) };
     if (input.submitUnanswered != null && typeof input.submitUnanswered !== 'boolean') throw new Error('采集模式无效');
     const cookie = sessions.getCookie(), token = ++generation;
     controller = new AbortController();
     const signal = controller.signal;
-    state = { status: 'running', stage: 'discovering', message: '准备采集答案…', result: null, courseUrl: input.courseUrl,
+    state = { status: 'running', stage: 'discovering', message: '准备采集答案…', result: null, courseUrl: input.courseUrl, concurrency: input.concurrency,
       mode: input.submitUnanswered === true ? 'submit' : 'visible', totalQuestions: 0, capturedAnswers: 0, missingAnswers: 0, totalExercises: 0, processedExercises: 0, submitted: 0 };
     emit();
     task = Promise.resolve().then(() => collector.collect(input, cookie, { signal, onProgress(update) {

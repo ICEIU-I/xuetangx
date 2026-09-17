@@ -21,7 +21,13 @@ function createDiscussionJournal(directory = DISCUSSION_STATE_DIR) {
     }
   }
   async function get(classroomId, userId, leafId) { return (await read(classroomId, userId)).units[leafId]; }
-  async function set(classroomId, userId, leafId, record) {
+  let writing = Promise.resolve();
+  function set(...args) {
+    const operation = writing.then(() => save(...args));
+    writing = operation.catch(() => {});
+    return operation;
+  }
+  async function save(classroomId, userId, leafId, record) {
     const target = filename(classroomId, userId), temp = `${target}.${randomUUID()}.tmp`;
     try {
       const data = await read(classroomId, userId);

@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import { api } from '../api';
 const props = defineProps({ session: Object, task: Object });
+const concurrency = ref(3);
 const courses = ref([]), courseUrl = ref(''), submitUnanswered = ref(false);
 const loading = ref(false), starting = ref(false), error = ref(''), saved = ref(null);
 const running = computed(() => props.task.status === 'running');
@@ -39,7 +40,7 @@ watch(courseUrl, () => { saved.value = null; error.value = ''; submitUnanswered.
 watch(() => props.task.status, value => { if (['done', 'partial', 'error', 'stopped'].includes(value) && selected.value) readSaved(); });
 async function start() {
   starting.value = true; error.value = '';
-  try { await api.collectAnswers(courseUrl.value, submitUnanswered.value); }
+  try { await api.collectAnswers(courseUrl.value, submitUnanswered.value, concurrency.value); }
   catch (e) { error.value = e.message; }
   finally { starting.value = false; }
 }
@@ -61,6 +62,8 @@ async function stop() { try { await api.stopAnswers(); } catch (e) { error.value
     <label class="mode"><input type="checkbox" v-model="submitUnanswered" :disabled="running || starting" />提交未做题后采集答案</label>
     <p class="mode-note" :class="{ warn: submitUnanswered }">{{ submitUnanswered ? '此模式会提交测试选项，消耗作答机会并可能影响成绩；已作答题不会重复提交。' : '当前仅读取后端已公开的标准答案，不提交作答。' }}</p>
     <div class="row actions">
+      <label for="answer-concurrency">并发练习数</label>
+      <select id="answer-concurrency" class="concurrency" v-model.number="concurrency" :disabled="running || starting"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
       <button class="primary" :disabled="!session.connected || !courseUrl || running || loading || starting" @click="start">{{ submitUnanswered ? '提交并采集本课程答案' : '获取本课程已公开答案' }}</button>
       <button :disabled="!selected || running" @click="readSaved">查看本地答案</button>
       <button v-if="running" class="danger" @click="stop">停止采集</button>
@@ -88,6 +91,7 @@ async function stop() { try { await api.stopAnswers(); } catch (e) { error.value
 </template>
 
 <style scoped>
+select.concurrency { flex: none; width: 64px; padding: 8px; }
 h2 { font-weight: 400; }
 .course-row { display: flex; gap: 10px; margin: 6px 0 12px; }
 select { min-width: 0; width: 100%; flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: white; font: inherit; }

@@ -1,3 +1,4 @@
+const { concurrency: getConcurrency, workers } = require('./tasks');
 const { setTimeout: wait } = require('node:timers/promises');
 const http = require('./http');
 const courses = require('./video');
@@ -15,8 +16,10 @@ function createDiscussionService({ transport = http, courseService = courses, jo
   async function request(method, endpoint, body, cookie, context) {
     for (let attempt = 0; ; attempt++) {
       context.signal?.throwIfAborted();
-      if (nextRequest > now()) await sleep(nextRequest - now(), undefined, { signal: context.signal });
-      context.signal?.throwIfAborted(); nextRequest = now() + interval;
+      const slot = Math.max(now(), nextRequest);
+      nextRequest = slot + interval;
+      if (slot > now()) await sleep(slot - now(), undefined, { signal: context.signal });
+      context.signal?.throwIfAborted();
       const opts = { signal: context.signal, headers: { xtbz: 'xt', Referer: context.courseUrl, 'X-Requested-With': 'XMLHttpRequest' } };
       const response = await (method === 'GET' ? transport.get(endpoint, cookie, opts) : transport.post(endpoint, body, cookie, opts));
       if (response.status === 429 && attempt < maxRetries) {
@@ -29,7 +32,7 @@ function createDiscussionService({ transport = http, courseService = courses, jo
         await sleep(delay, undefined, { signal: context.signal }); continue;
       }
       if (response.status !== 200 || response.json?.success !== true) {
-        const error = new Error(`讨论接口请求失败（HTTP ${response.status}）`);
+        const error = new Error(http.responseError(response, '讨论接口请求'));
         error.stopBatch = [401, 403, 429].includes(response.status);
         error.definitelyRejected = [401, 403, 429].includes(response.status);
         throw error;
@@ -63,15 +66,16 @@ function createDiscussionService({ transport = http, courseService = courses, jo
     return { course, discussions, total: discussions.length, completed: discussions.filter(item => item.completed).length };
   }
 
-  async function completeCourse({ courseUrl }, cookie, { signal, onProgress = () => {} } = {}) {
+  async function completeCourse({ courseUrl, concurrency = 3 }, cookie, { signal, onProgress = () => {} } = {}) {
+    concurrency = getConcurrency(concurrency);
     const target = courses.parseCourseUrl(courseUrl);
     return journal.withLock(target.classroomId, async () => {
       onProgress({ stage: 'scanning', message: '扫描指定课程的全部讨论题…' });
       const { course, discussions } = await scanCourse(courseUrl, cookie, { signal, onProgress });
       const context = { signal, onProgress, courseUrl: course.url };
-      const result = { course, content: CONTENT, total: discussions.length, processed: 0, completed: 0, skipped: 0, failed: 0, results: [] };
+      const result = { course, concurrency, content: CONTENT, total: discussions.length, processed: 0, completed: 0, skipped: 0, failed: 0, results: [] };
       const update = extra => onProgress({ ...result, ...extra });
-      for (const unit of discussions) {
+      await workers(discussions, concurrency, async unit => {
         signal?.throwIfAborted();
         update({ stage: 'checking', current: unit.title, message: `处理 ${result.processed + 1}/${result.total}：${unit.title}` });
         const item = { leafId: unit.leafId, title: unit.title };
@@ -124,8 +128,7 @@ function createDiscussionService({ transport = http, courseService = courses, jo
         }
         result.processed++; result.results.push(item);
         update({ message: `${result.processed}/${result.total} · 新完成 ${result.completed} · 已完成跳过 ${result.skipped} · 失败 ${result.failed}` });
-        if (result.stoppedReason) break;
-      }
+      }, { signal, shouldStop: () => !!result.stoppedReason });
       signal?.throwIfAborted(); return result;
     });
   }

@@ -28,7 +28,7 @@ function createVideoRunner({ service = videoService, sessions = session } = {}) 
     const signal = controller.signal;
     state = { status: 'running', stage: 'loading', mode: isCourse ? 'course' : 'single', sent: 0, total: 0,
       totalVideos: 0, processedVideos: 0, completedVideos: 0, skippedVideos: 0, failedVideos: 0, recentResults: [],
-      activeVideos: [], concurrency: isCourse ? Number(input.concurrency ?? 1) : 1,
+      activeVideos: [], concurrency: isCourse ? Number(input.concurrency ?? 3) : 1,
       message: '正在准备…', result: null, startedAt: Date.now(), url: input.url };
     emit();
     const callbacks = { signal, onProgress(update) {
