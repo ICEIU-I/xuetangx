@@ -18,3 +18,9 @@ data/answers/*.json
 data/answer-db/
 data/discussion-state/
 data/workflow/
+
+# Go binaries, local infrastructure and secret material
+bin/
+.local/
+secrets/
+coverage.out
