@@ -51,9 +51,14 @@ function createHomework({ rpc, request, progress, signal, subscribe }) {
         if (exercise.error) { result.failed++; result.results.push({ unitId: exercise.leafId, status: 'blocked', error: exercise.error }); continue; }
         const fresh = await request('GET', `/api/v1/lms/exercise/get_exercise_list/${exercise.exerciseId}/${exercise.skuId}/`);
         const problems = new Map((fresh.problems || []).map(problem => [Number(problem.problem_id), problem]));
-        for (const item of result.results.filter(item => item.unitId === exercise.leafId && item.status === 'completed')) {
-          const user = problems.get(item.problemId)?.user;
-          if (!(Number(user?.my_count) > 0 && user.is_right === true)) { item.status = 'failed'; item.error = '最终回查未确认作答正确'; result.completed--; result.failed++; }
+        for (const item of result.results.filter(item => item.unitId === exercise.leafId && ['completed', 'failed'].includes(item.status))) {
+          const freshProblem = problems.get(item.problemId), original = exercise.problems.find(problem => Number(problem.problem_id) === item.problemId);
+          const user = freshProblem?.user;
+          const confirmed = freshProblem && original && fingerprint(freshProblem) === fingerprint(original) && Number(user?.my_count) > 0 && user.is_right === true;
+          if (confirmed && item.status === 'failed') {
+            item.status = 'completed'; delete item.error; result.failed--; result.completed++;
+            progress({ ...result, stage: 'answering', message: `题目 ${item.problemId}：最终回查已确认作答正确` });
+          } else if (!confirmed && item.status === 'completed') { item.status = 'failed'; item.error = '最终回查未确认作答正确'; result.completed--; result.failed++; }
         }
       }
       return result;

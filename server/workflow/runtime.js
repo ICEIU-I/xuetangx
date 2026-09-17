@@ -87,7 +87,12 @@ function createRuntime({ directory = path.join(ROOT, 'data/workflow'), bankDirec
     log(job, actor.kind, module.message);
     publish(job).catch(() => {});
   }
-  const { handleRpc } = createOperations({ accounts, bank, catalog, effects, call, now, waiting });
+  function report(job, actor, message) {
+    if (actor.stopping || actor.controller.signal.aborted) return;
+    Object.assign(job.modules[actor.kind], { status: 'running', message });
+    log(job, actor.kind, message); publish(job).catch(() => {});
+  }
+  const { handleRpc } = createOperations({ accounts, bank, catalog, effects, call, now, waiting, report });
   const { spawn } = createProcessHost({ actors, exits, accounts, forkImpl, handleRpc, publish, log, restartModule: (...args) => pipeline.restartModule(...args), isClosed: () => closed });
   const pipeline = createPipeline({ accounts, catalog, bank, actors, preparing, collecting, beginOperation, spawn, send, actorKey, publish, log });
   const { refreshCoverage, launchCollector, prepare, restartModule } = pipeline;
