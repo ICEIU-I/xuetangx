@@ -11,7 +11,7 @@ function createAnswerStore(directory = ANSWER_DB_DIR) {
   async function read(classroomId) {
     try {
       const data = JSON.parse(await fs.readFile(filePath(classroomId), 'utf8'));
-      if (data.version !== 1 || data.course?.classroomId !== Number(classroomId) || !data.exercises || typeof data.exercises !== 'object' || Array.isArray(data.exercises)) throw new Error('数据库格式不正确');
+      if (![1, 2].includes(data.version) || data.course?.classroomId !== Number(classroomId) || !data.exercises || typeof data.exercises !== 'object' || Array.isArray(data.exercises)) throw new Error('数据库格式不正确');
       return data;
     } catch (error) {
       if (error.code === 'ENOENT') return null;
