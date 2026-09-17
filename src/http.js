@@ -64,9 +64,10 @@ function createHttpClient({ requestImpl = https.request, sleep = wait, now = Dat
       catch (error) {
         if (options.signal?.aborted || error.name === 'AbortError') throw error;
         const safe = error.connectionEstablished === false || readOnly(method, endpoint);
-        if (transientCodes.has(error.code) && safe && index < retryDelays.length) {
-          options.onRetry?.({ attempt: index + 1, delay: retryDelays[index], code: error.code });
-          await sleep(retryDelays[index], undefined, { signal: options.signal }); continue;
+        const delays = options.retryDelays || retryDelays;
+        if (transientCodes.has(error.code) && safe && index < delays.length) {
+          options.onRetry?.({ attempt: index + 1, delay: delays[index], code: error.code });
+          await sleep(delays[index], undefined, { signal: options.signal }); continue;
         }
         if (!transientCodes.has(error.code)) throw error;
         const phase = error.connectionEstablished ? '网络连接中断' : '连接学堂在线失败（TLS 连接建立前中断）';
@@ -83,7 +84,7 @@ function createHttpClient({ requestImpl = https.request, sleep = wait, now = Dat
     const value = cookie || COOKIE;
     if (!value) throw new Error('未配置 COOKIE');
     if (!getCsrf(value)) throw new Error('COOKIE 里缺少 csrftoken');
-    const response = await get('/api/v1/u/user/basic_profile/', value);
+    const response = await get('/api/v1/u/user/basic_profile/', value, { retryDelays: [1000, 2000, 4000, 8000] });
     if (response.status !== 200 || !response.json?.data) throw new Error(responseError(response, '校验登录态'));
     return response.json.data;
   }

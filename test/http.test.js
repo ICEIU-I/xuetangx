@@ -57,6 +57,12 @@ test('retry exhaustion has a clear Chinese message and preserves the network cod
   await assert.rejects(client.get('/api/v1/u/user/basic_profile/'), error => error.code === 'ECONNRESET' && /已重试 2 次/.test(error.message));
   assert.equal(calls.length, 3);
 });
+
+test('login validation gets a longer read-only retry window than ordinary requests', async () => {
+  const { client, calls, waits } = fixture(['tls', 'tls', 'tls', 'success']);
+  const response = await client.get('/api/v1/u/user/basic_profile/', 'cookie', { retryDelays: [1000, 2000, 4000] });
+  assert.equal(response.status, 200); assert.equal(calls.length, 4); assert.deepEqual(waits, [1000, 2000, 4000]);
+});
 test('stop during retry wait prevents subsequent requests', async () => {
   const controller = new AbortController();
   const { client, calls } = fixture(['tls'], { sleep: async () => controller.abort() });
