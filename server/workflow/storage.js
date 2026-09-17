@@ -33,6 +33,7 @@ function createStorage(directory) {
     let files; try { files = await fs.readdir(directory); } catch (error) { if (error.code === 'ENOENT') return []; throw error; }
     return Promise.all(files.filter(name => name.endsWith('.json')).map(name => read(name.slice(0, -5))));
   }
-  return { read, save, transact, list, directory };
+  const flush = async () => { while (queues.size) await Promise.allSettled([...queues.values()]); };
+  return { read, save, transact, list, flush, directory };
 }
 module.exports = { createStorage };
