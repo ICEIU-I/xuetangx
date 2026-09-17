@@ -10,6 +10,8 @@ const video = require('../src/video');
 const videoRunner = require('./video-runner');
 const answerBank = require('../src/answer-bank');
 const answerRunner = require('./answer-runner');
+const article = require('../src/article');
+const articleRunner = require('./article-runner');
 
 const app = express();
 app.use(express.json({ limit: '1mb' }));
@@ -22,18 +24,33 @@ app.get('/api/session', (req, res) => res.json(session.summary()));
 
 app.post('/api/cookie', async (req, res) => {
   try {
-    if (req.body?.cookie?.trim() !== session.getCookie()) { videoRunner.reset(); answerRunner.reset(); }
+    if (req.body?.cookie?.trim() !== session.getCookie()) { videoRunner.reset(); answerRunner.reset(); articleRunner.reset(); }
     const user = await session.setCookie(req.body && req.body.cookie);
     res.json({ ok: true, user });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/disconnect', (req, res) => { videoRunner.reset(); answerRunner.reset(); session.clear(); res.json({ ok: true }); });
+app.post('/api/disconnect', (req, res) => { videoRunner.reset(); answerRunner.reset(); articleRunner.reset(); session.clear(); res.json({ ok: true }); });
+
+// —— 标记指定课程的全部图文为已看完 ——
+app.post('/api/article/scan', async (req, res) => {
+  if (!session.isConnected()) return res.status(400).json({ error: '请先连接登录态' });
+  try { res.json({ ok: true, ...await article.scanCourse(req.body?.courseUrl, session.getCookie()) }); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/article/run', (req, res) => {
+  try {
+    if ([runner, videoRunner, answerRunner].some(task => task.getState().status === 'running')) throw new Error('请先停止其他执行任务');
+    res.status(202).json({ ok: true, state: articleRunner.start({ courseUrl: req.body?.courseUrl }) });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.post('/api/article/stop', (req, res) => res.json({ ok: true, state: articleRunner.stop() }));
+app.get('/api/article/state', (req, res) => res.json(articleRunner.getState()));
 
 // —— 按课程采集答案并写入本地 JSON 数据库 ——
 app.post('/api/answer-bank/run', (req, res) => {
   try {
-    if (runner.getState().status === 'running' || videoRunner.getState().status === 'running') throw new Error('请先停止其他执行任务');
+    if ([runner, videoRunner, articleRunner].some(task => task.getState().status === 'running')) throw new Error('请先停止其他执行任务');
     res.status(202).json({ ok: true, state: answerRunner.start({ courseUrl: req.body?.courseUrl, submitUnanswered: req.body?.submitUnanswered }) });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
@@ -58,7 +75,7 @@ app.post('/api/video/inspect', async (req, res) => {
 });
 app.post('/api/video/run', (req, res) => {
   try {
-    if (answerRunner.getState().status === 'running') throw new Error('请先停止答案采集任务');
+    if ([answerRunner, articleRunner].some(task => task.getState().status === 'running')) throw new Error('请先停止答案采集或图文任务');
     res.status(202).json({ ok: true, state: videoRunner.start({ courseUrl: req.body?.courseUrl, concurrency: req.body?.concurrency, url: req.body?.url, durationSeconds: req.body?.durationSeconds }) });
   }
   catch (e) { res.status(400).json({ ok: false, error: e.message }); }
@@ -116,7 +133,7 @@ app.get('/api/status', async (req, res) => {
 // —— 跑作业 ——
 app.post('/api/run', async (req, res) => {
   try {
-    if (answerRunner.getState().status === 'running') return res.status(400).json({ ok: false, error: '请先停止答案采集任务' });
+    if ([answerRunner, articleRunner].some(task => task.getState().status === 'running')) return res.status(400).json({ ok: false, error: '请先停止答案采集或图文任务' });
     const targets = (req.body && req.body.targets) || null;
     runner.startRun(targets).catch((e) => console.error('[startRun error]', e)); // 异步跑，事件走 SSE
     res.json({ ok: true });
@@ -129,12 +146,13 @@ app.get('/api/run-state', (req, res) => res.json(runner.getState()));
 app.get('/api/events', (req, res) => {
   res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
   res.flushHeaders();
-  res.write(`data: ${JSON.stringify({ type: 'hello', ...runner.getState(), video: videoRunner.getState(), answerBank: answerRunner.getState() })}\n\n`);
+  res.write(`data: ${JSON.stringify({ type: 'hello', ...runner.getState(), video: videoRunner.getState(), answerBank: answerRunner.getState(), article: articleRunner.getState() })}\n\n`);
   const off = runner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
   const offVideo = videoRunner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
   const offAnswers = answerRunner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
+  const offArticles = articleRunner.onEvent((evt) => res.write(`data: ${JSON.stringify(evt)}\n\n`));
   const ping = setInterval(() => res.write(': ping\n\n'), 15000);
-  req.on('close', () => { off(); offVideo(); offAnswers(); clearInterval(ping); });
+  req.on('close', () => { off(); offVideo(); offAnswers(); offArticles(); clearInterval(ping); });
 });
 
 // —— 静态前端 ——

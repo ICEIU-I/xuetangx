@@ -25,6 +25,9 @@ export const api = {
   collectAnswers: (courseUrl, submitUnanswered) => j('/api/answer-bank/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, submitUnanswered }) }),
   stopAnswers: () => j('/api/answer-bank/stop', { method: 'POST' }),
   answerDatabase: (classroomId) => j(`/api/answer-bank/${encodeURIComponent(classroomId)}`),
+  articleScan: (courseUrl) => j('/api/article/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
+  articleRun: (courseUrl) => j('/api/article/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
+  articleStop: () => j('/api/article/stop', { method: 'POST' }),
 };
 
 // SSE：返回一个 EventSource，调用方监听 message
