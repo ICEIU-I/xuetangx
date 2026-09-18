@@ -1,0 +1,9 @@
+# Replace example.org (including www) with the deployed domain before installation.
+# Append these blocks to the existing Caddyfile; do not replace other sites.
+example.org {
+	reverse_proxy 127.0.0.1:18788
+}
+
+www.example.org {
+	redir https://example.org{uri} permanent
+}
