@@ -32,6 +32,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       CREDENTIAL_KEY_FILE: /run/secrets/credential_keys.json
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set HTTPS public origin}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       MAIL_ENABLED: "false"
       REQUIRE_EMAIL_VERIFICATION: "false"
       LISTEN_ADDR: 0.0.0.0:8788

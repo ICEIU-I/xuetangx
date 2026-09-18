@@ -15,6 +15,7 @@ type Config struct {
 	MailEnabled                                                                            bool
 	RequireEmailVerification                                                               bool
 	TrustedProxies                                                                         []*net.IPNet
+	AllowedOrigins                                                                         []string
 	GlobalJobs, UserJobs                                                                   int
 }
 
@@ -63,6 +64,10 @@ func Load() (Config, error) {
 	}
 	if !c.Development && u.Scheme != "https" {
 		return c, fmt.Errorf("production PUBLIC_BASE_URL requires HTTPS")
+	}
+	c.AllowedOrigins, e = parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"), c.Development)
+	if e != nil {
+		return c, e
 	}
 	if c.DatabaseURL == "" || c.KeyFile == "" {
 		return c, fmt.Errorf("DATABASE_URL and CREDENTIAL_KEY_FILE are required")
