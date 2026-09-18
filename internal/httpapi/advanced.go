@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"fmt"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -184,12 +185,12 @@ func (s *Server) answerBank(w http.ResponseWriter, r *http.Request) {
 		writeError(w, fault.New("INVALID_INPUT", "课程标识无效"))
 		return
 	}
-	a, e := s.Accounts.Require(r.Context(), principal(r).User.ID, "primary")
-	if e != nil {
-		writeError(w, e)
+	var c domain.Course
+	e = s.Auth.DB.Pool.QueryRow(r.Context(), `SELECT id,classroom_id,sign,course_sign,title,url FROM courses WHERE classroom_id=$1 ORDER BY updated_at DESC LIMIT 1`, id).Scan(&c.ID, &c.ClassroomID, &c.Sign, &c.CourseSign, &c.Title, &c.URL)
+	if e == pgx.ErrNoRows {
+		writeError(w, fault.New("NOT_FOUND", "题库课程不存在"))
 		return
 	}
-	c, e := s.Catalog.Authorize(r.Context(), a, domain.Course{ClassroomID: id})
 	if e != nil {
 		writeError(w, e)
 		return
