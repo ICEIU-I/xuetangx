@@ -1,9 +1,7 @@
 import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
 
 // 开发期：前端 5173，API/SSE 代理到后端 8788
 export default defineConfig({
-  plugins: [vue()],
   build: { outDir: 'dist', emptyOutDir: true },
   server: {
     port: 5173,

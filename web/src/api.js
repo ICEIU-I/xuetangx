@@ -14,8 +14,9 @@ const j = request;
 export const api = {
   session: () => j('/api/session'),
   workflowState: (offset = 0, limit = 25) => j(`/api/workflow/state?offset=${offset}&limit=${limit}`),
+  workflowJob: id => j(`/api/workflow/${encodeURIComponent(id)}`),
   workflowCourses: () => j('/api/workflow/courses'),
-  workflowStart: (courseUrl, concurrency = 3) => j('/api/workflow/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
+  workflowStart: (courseUrl, concurrency = 3, options = {}) => j('/api/workflow/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...options, courseUrl, concurrency }) }),
   workflowControl: (id, action) => j(`/api/workflow/${encodeURIComponent(id)}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
   testConnect: (cookie) => j('/api/test-cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),
   testDisconnect: () => j('/api/test-disconnect', { method: 'POST' }),
@@ -48,8 +49,10 @@ export const api = {
 };
 
 // SSE：返回一个 EventSource，调用方监听 message
-export function subscribeEvents(onEvent) {
+export function subscribeEvents(onEvent, handlers = {}) {
   const es = new EventSource('/api/events');
   es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch {} };
+  es.onopen = () => handlers.open?.();
+  es.onerror = () => handlers.error?.();
   return es;
 }
