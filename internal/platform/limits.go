@@ -13,6 +13,10 @@ var limitedWords = regexp.MustCompile(`(?i)throttl|too many requests|请求过�
 var secondsPattern = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*(?:seconds?|秒)`)
 
 func RateLimited(r Response) bool {
+	// A 403 has its own bounded retry policy, even if its body also mentions throttling.
+	if r.Status == 403 {
+		return false
+	}
 	return r.Status == 429 || (r.JSON["success"] == false && limitedWords.MatchString(wire.String(r.JSON["detail"])+wire.String(r.JSON["msg"])+wire.String(r.JSON["code"])))
 }
 func Cooldown(r Response, now time.Time) time.Time {

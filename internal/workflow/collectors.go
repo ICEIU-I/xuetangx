@@ -7,9 +7,15 @@ import (
 	"xuetangx/internal/domain"
 	"xuetangx/internal/fault"
 	"xuetangx/internal/learning"
+	"xuetangx/internal/platform"
 )
 
 func (e *Engine) prepareCollector(ctx context.Context, job domain.Job, primary domain.Account, inv domain.Inventory, missing bool) {
+	defer func() {
+		e.mu.Lock()
+		delete(e.preparingCollectors, job.ID)
+		e.mu.Unlock()
+	}()
 	candidates, err := e.Accounts.SharedCollectors(ctx, primary.UserID)
 	if err != nil {
 		e.collectorError(ctx, job, err)
@@ -33,6 +39,9 @@ func (e *Engine) prepareCollector(ctx context.Context, job domain.Job, primary d
 		if ctx.Err() != nil {
 			return
 		}
+		e.mu.Lock()
+		e.preparingCollectors[job.ID] = a
+		e.mu.Unlock()
 		target, err := e.Catalog.Discover(ctx, a, job.Course.URL)
 		if fault.Code(err) == "ENROLLMENT_REQUIRED" && a.Shared && missing {
 			_ = e.Jobs.Module(ctx, job.Owner, job.ID, "collector", "queued", "正在检查课程的免费加入选项")
@@ -67,6 +76,25 @@ func (e *Engine) prepareCollector(ctx context.Context, job domain.Job, primary d
 		return
 	}
 	e.collectorError(ctx, job, last)
+}
+
+// CollectorLimit exposes only the cooldown of this owner's active job, without shared identity.
+func (e *Engine) CollectorLimit(owner, id string) *platform.CooldownState {
+	e.mu.Lock()
+	if e.owners[id] != owner {
+		e.mu.Unlock()
+		return nil
+	}
+	a, ok := e.preparingCollectors[id]
+	if actor := e.actors[id+":collector"]; actor != nil {
+		a, ok = actor.account, true
+	}
+	e.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	state := e.Broker.State(a.UserID).CooldownState
+	return &state
 }
 func (e *Engine) collectorError(ctx context.Context, j domain.Job, err error) {
 	if ctx.Err() != nil {

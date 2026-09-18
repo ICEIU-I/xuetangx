@@ -22,10 +22,11 @@ const Origin = "https://www.xuetangx.com"
 const SubmitPath = "/api/v1/lms/exercise/problem_apply/"
 
 type Response struct {
-	Status     int             `json:"status"`
-	JSON       wire.Object     `json:"json"`
-	RetryAfter string          `json:"retryAfter"`
-	Raw        json.RawMessage `json:"raw,omitempty"`
+	Status        int             `json:"status"`
+	JSON          wire.Object     `json:"json"`
+	RetryAfter    string          `json:"retryAfter"`
+	AccessRetries int             `json:"accessRetries,omitempty"`
+	Raw           json.RawMessage `json:"raw,omitempty"`
 }
 type TransportError struct {
 	Connected, Transient bool
@@ -147,6 +148,9 @@ func (r Response) Data() (wire.Object, error) {
 		return nil, fault.New("ACCOUNT_REQUIRED", "平台登录已失效")
 	}
 	if r.Status == 403 {
+		if r.AccessRetries > 0 {
+			return nil, fault.New("ACCESS_DENIED", fmt.Sprintf("平台持续拒绝访问（HTTP 403），已冷却重试 %d 次；请稍后重试未完成项", r.AccessRetries))
+		}
 		return nil, fault.New("ACCESS_DENIED", "平台拒绝访问（HTTP 403）")
 	}
 	if RateLimited(r) {

@@ -3,16 +3,16 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { api, subscribeEvents } from '../../api';
 const props = defineProps({ session: Object });
 const courses = ref([]), courseUrl = ref(''), concurrency = ref(3), jobs = ref([]), rateLimits = ref({});
-const sharedCollectors = ref(0);
+const sharedCollectors = ref(0), collectorLimits = ref({});
 const busy = ref(false), error = ref(''), now = ref(Date.now());
 const accountId = computed(() => props.session.connected ? String(props.session.user?.user_id || props.session.user?.id || '') : '');
 const job = computed(() => jobs.value.find(item => item.course.url === courseUrl.value));
 const modules = [{ kind: 'video', title: '看视频', icon: '▶' }, { kind: 'article', title: '图文阅读', icon: '▤' }, { kind: 'discussion', title: '讨论', icon: '◌' }, { kind: 'homework', title: '答题', icon: '✓' }];
-const running = computed(() => job.value && ['running', 'waiting_input'].includes(job.value.status));
+const running = computed(() => job.value && ['queued', 'running', 'waiting_input'].includes(job.value.status));
 const names = { queued: '准备中', scanning: '扫描课程', running: '执行中', waiting_input: '等待补充信息', waiting_answers: '等待答案', waiting_account: '等待账号', waiting_enrollment: '等待选课', waiting_rate_limit: '服务端限流等待', done: '已完成', partial: '部分完成', blocked: '需要处理', paused: '已暂停', stopped: '已停止' };
 function updateJob(value) { const index = jobs.value.findIndex(item => item.id === value.id); if (index < 0) jobs.value.unshift(value); else jobs.value[index] = value; jobs.value.sort((a, b) => b.createdAt - a.createdAt); }
 async function refresh() {
-  const state = await api.workflowState(); jobs.value = state.jobs; rateLimits.value = state.rateLimits || {}; sharedCollectors.value = state.sharedCollectors || 0;
+  const state = await api.workflowState(); jobs.value = state.jobs; rateLimits.value = state.rateLimits || {}; sharedCollectors.value = state.sharedCollectors || 0; collectorLimits.value = state.collectorLimits || {};
 }
 async function load() {
   if (!accountId.value) return;
@@ -37,6 +37,17 @@ async function control(action) {
   finally { busy.value = false; }
 }
 function countdown(state) { return state?.blocked ? Math.max(0, Math.ceil((state.readyAt - now.value) / 1000)) : 0; }
+function waitLabel(state) { return state?.reason === 'access_denied' ? '403 冷却等待' : '限流等待'; }
+const collectorLimit = computed(() => collectorLimits.value[job.value?.id]);
+const collectorActive = computed(() => ['queued', 'running', 'waiting_rate_limit'].includes(job.value?.modules.collector?.status) && running.value);
+const collectorTitle = computed(() => {
+  if (collectorActive.value && countdown(collectorLimit.value)) return waitLabel(collectorLimit.value);
+  const status = job.value?.modules.collector?.status;
+  return names[status] || (sharedCollectors.value ? '已配置' : '等待管理员配置');
+});
+const collectorMessage = computed(() => collectorActive.value && countdown(collectorLimit.value)
+  ? `${countdown(collectorLimit.value)} 秒后自动重试；403 最多重试 5 次`
+  : job.value?.modules.collector?.message || '缺少答案时自动采集；只免费加入课程');
 function percent(module) { return module?.total ? Math.min(100, Math.round((module.processed || 0) / module.total * 100)) : module?.status === 'done' ? 100 : 0; }
 const failures = computed(() => Object.entries(job.value?.modules || {}).flatMap(([kind, value]) => (value.results || []).filter(item => item.error).map(item => ({ ...item, kind }))));
 let events, clock, polling, refreshing = false;
@@ -71,10 +82,10 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
       <button v-if="job && ['paused','partial','stopped','waiting_input'].includes(job.status)" :disabled="busy" @click="control('resume')">继续 / 重试未完成项</button>
       <button v-if="running || job?.status === 'paused'" class="danger" :disabled="busy" @click="control('stop')">停止</button>
     </div>
-    <p v-if="job?.modules.collector?.message && job.modules.collector.status !== 'done'" class="notice">答案采集：{{job.modules.collector.message}}</p>
+    <p v-if="job?.modules.collector && job.modules.collector.status !== 'done'" class="notice">答案采集：{{collectorMessage}}</p>
     <div class="status-grid">
-      <div class="status-card"><span class="dim">正式账号提交状态</span><strong>{{ countdown(rateLimits.primary) ? '限流等待' : '可提交' }}</strong><span class="dim">{{countdown(rateLimits.primary)?`${countdown(rateLimits.primary)} 秒后重试`:'仅在服务端返回限流时等待'}}</span></div>
-      <div class="status-card"><span class="dim">全站答案采集</span><strong>{{sharedCollectors ? '已就绪' : '等待管理员配置'}}</strong><span class="dim">缺少答案时自动采集；只免费加入课程</span></div>
+      <div class="status-card"><span class="dim">正式账号提交状态</span><strong>{{ countdown(rateLimits.primary) ? waitLabel(rateLimits.primary) : '可提交' }}</strong><span class="dim">{{countdown(rateLimits.primary)?`${countdown(rateLimits.primary)} 秒后可重试`:'平台限流或拒绝访问时冷却等待'}}</span></div>
+      <div class="status-card"><span class="dim">全站答案采集</span><strong>{{collectorTitle}}</strong><span class="dim">{{collectorMessage}}</span></div>
       <div class="status-card"><span class="dim">本课程题库</span><strong>{{ job?.coverage ? `${job.coverage.captured} / ${job.coverage.total}` : '待扫描' }}</strong><span class="dim">{{ job?.coverage?.missing ? `缺少 ${job.coverage.missing} 条答案，边采集边作答` : '仅使用匹配版本的标准答案' }}</span></div>
     </div>
     <div class="module-grid">

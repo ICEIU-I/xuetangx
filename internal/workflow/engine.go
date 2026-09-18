@@ -39,6 +39,7 @@ type Engine struct {
 	mu                     sync.Mutex
 	actors                 map[string]*actor
 	preparing              map[string]context.CancelFunc
+	preparingCollectors    map[string]domain.Account
 	owners                 map[string]string
 	ready                  atomic.Bool
 	wg                     sync.WaitGroup
@@ -65,6 +66,7 @@ func New(ctx context.Context, db *store.Store, a *accounts.Service, b *bank.Serv
 		cancel()
 		return nil, e
 	}
+	engine.preparingCollectors = map[string]domain.Account{}
 	engine.ready.Store(true)
 	broker.Ready = engine.Ready
 	a.OnChange = engine.AccountChanged

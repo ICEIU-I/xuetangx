@@ -78,9 +78,15 @@ func (s *Server) snapshot(ctx context.Context, owner string, limit, offset int) 
 	if e != nil {
 		return nil, e
 	}
+	collectorLimits := map[string]any{}
+	for _, j := range list {
+		if state := s.Engine.CollectorLimit(owner, j.ID); state != nil {
+			collectorLimits[j.ID] = state
+		}
+	}
 	shared, e := s.Accounts.SharedCollectors(ctx, 0)
 	if e != nil {
 		return nil, e
 	}
-	return map[string]any{"sharedCollectors": len(shared), "accounts": accounts, "rateLimits": limits, "jobs": list, "pagination": map[string]int{"total": total, "limit": limit, "offset": offset}}, nil
+	return map[string]any{"collectorLimits": collectorLimits, "sharedCollectors": len(shared), "accounts": accounts, "rateLimits": limits, "jobs": list, "pagination": map[string]int{"total": total, "limit": limit, "offset": offset}}, nil
 }
