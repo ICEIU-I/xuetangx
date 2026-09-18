@@ -11,7 +11,7 @@ export function navigate(url, replace = false) {
 export function startRouter(onRoute) {
   function update() {
     if (!titles[location.pathname] && !/^\/tasks\/[^/]+$/.test(location.pathname) && !adminUserPath(location.pathname)) history.replaceState({}, '', '/learn' + location.search + location.hash);
-    const route = currentRoute(); document.title = `${route.title} · CCF`; onRoute(route);
+    onRoute(currentRoute());
   }
   function click(event) {
     const link = event.target.closest('a[data-route]');

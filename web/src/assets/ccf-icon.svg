@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <title>CCF：中国人能飞</title>
+  <path fill="#26243a" d="M2 0h12v2h2v12h-2v2H2v-2H0V2h2z"/>
+  <path fill="#69c8ef" d="M6 5h3v3H7v1H4v1H2V8h2V6h2z"/>
+  <path fill="#ff6b73" d="M13 2h1v3h-1v1h-2v2h-1v2H8v2H7v1H5v-1h1v-2H5v1H3V9h2V8h1V7h2V6h2V5h2V4h1z"/>
+  <path fill="#ffd15c" d="M9 3h3v2H9zM2 12h2v1H2zM1 14h2v1H1z"/>
+</svg>

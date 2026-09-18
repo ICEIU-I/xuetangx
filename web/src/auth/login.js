@@ -1,8 +1,10 @@
+import { passwordField, bindPasswordToggles } from '../shared/password-field.js';
 import { brandMarkup } from '../shared/brand.js';
 import { request } from '../api.js';
 import { escape as e, field, json, feedback, disabled, render, delegate, lifetime } from '../shared/dom.js';
 export function mountLogin(host, authenticated) {
   const life = lifetime();
+  bindPasswordToggles(host, life);
   let mode = 'login', email = '', error = '', message = '', busy = false, config = null, token = '';
   const hash = new URLSearchParams(location.hash.slice(1));
   for (const kind of ['verify', 'reset']) if (hash.has(kind)) { mode = kind; token = hash.get(kind); history.replaceState({}, '', location.pathname + location.search); }
@@ -11,7 +13,7 @@ export function mountLogin(host, authenticated) {
     if (!life.alive) return;
     render(host, `<main class="auth-page"><a class="auth-brand" href="/" aria-label="CCF 首页">${brandMarkup()}</a><section class="auth-card"><div class="auth-window-bar" aria-hidden="true"><span class="auth-window-pixels"><i></i><i></i><i></i></span></div><div class="auth-content"><header class="card-header"><h1>${titles[mode]}</h1></header>${!config && !error ? '<div class="pixel-loader" role="status">正在连接…</div>' : ''}<form id="auth-form">
       ${!['reset','verify'].includes(mode) ? `<label for="auth-email">邮箱</label><input id="auth-email" name="email" type="email" autocomplete="${mode === 'login' ? 'username' : 'email'}" value="${e(email)}" placeholder="you@example.com" required>` : ''}
-      ${['login','register','reset'].includes(mode) ? `<label for="auth-password">密码</label><input id="auth-password" name="password" type="password" autocomplete="${mode === 'login' ? 'current-password' : 'new-password'}" maxlength="256" required>` : ''}
+      ${['login','register','reset'].includes(mode) ? `<label for="auth-password">密码</label>${passwordField({id:'auth-password',name:'password',autocomplete:mode === 'login' ? 'current-password' : 'new-password',maxLength:256})}` : ''}
       <button class="primary"${disabled(busy || !config)}>${busy ? '处理中…' : mode === 'register' ? '创建账号' : mode === 'verify' ? '确认验证邮箱' : mode === 'forgot' ? '发送重置链接' : mode === 'reset' ? '保存新密码' : '登录'}</button>
       </form>${busy ? '<div class="pixel-loader" role="status">处理中…</div>' : ''}${feedback(error)}${feedback(message, 'neutral')}<div class="auth-links">${mode === 'login' ? '<button data-mode="register" class="text-button">注册账号</button>' : '<button data-mode="login" class="text-button">返回登录</button>'}${mode === 'login' && config?.emailEnabled ? '<button data-mode="forgot" class="text-button">忘记密码</button>' : ''}${email && config?.emailEnabled && config?.emailVerificationRequired && ['login','register'].includes(mode) ? `<button data-resend class="text-button"${disabled(busy)}>重发验证邮件</button>` : ''}</div></div></section></main>`);
   }
