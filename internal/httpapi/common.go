@@ -84,7 +84,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 			}
 		}()
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" {
-			if origin := r.Header.Get("Origin"); origin != "" && !s.allowsOrigin(origin) {
+			if origin := r.Header.Get("Origin"); origin != "" && origin != s.Auth.BaseURL {
 				writeError(w, fault.New("CSRF", "请求来源不匹配"))
 				return
 			}
@@ -114,7 +114,7 @@ func (s *Server) require(next http.HandlerFunc) http.Handler {
 		}
 		if !p.Bearer && r.Method != "GET" && r.Method != "HEAD" {
 			token := r.Header.Get("X-CSRF-Token")
-			if token == "" || secure.Hash(token) != p.CSRFHash || !s.allowsOrigin(r.Header.Get("Origin")) {
+			if token == "" || secure.Hash(token) != p.CSRFHash || r.Header.Get("Origin") != s.Auth.BaseURL {
 				writeError(w, fault.New("CSRF", "请求校验失败，请刷新页面"))
 				return
 			}

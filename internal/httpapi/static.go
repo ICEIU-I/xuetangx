@@ -31,6 +31,10 @@ func (s *Server) static() http.Handler {
 		copy := r.Clone(r.Context())
 		copy.URL.Path = "/" + name
 		if name == "index.html" {
+			if s.redirectToPublicSite(w, r) {
+				return
+			}
+			w.Header().Set("Cache-Control", "no-store")
 			copy.URL.Path = "/"
 		}
 		http.FileServer(http.FS(s.Assets)).ServeHTTP(w, copy)

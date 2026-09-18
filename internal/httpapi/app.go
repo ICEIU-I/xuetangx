@@ -22,7 +22,6 @@ type Server struct {
 	Assets         fs.FS
 	EmailDisabled  bool
 	TrustedProxies []*net.IPNet
-	AllowedOrigins []string
 	limiter        auth.Limiter
 	hashSlots      chan struct{}
 	sseMu          sync.Mutex

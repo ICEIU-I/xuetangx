@@ -108,7 +108,6 @@ func main() {
 	defer server.WeChat.Close()
 	server.EmailDisabled = !cfg.MailEnabled
 	server.TrustedProxies = cfg.TrustedProxies
-	server.AllowedOrigins = cfg.AllowedOrigins
 	server.Assets, e = webassets.FS()
 	if e != nil {
 		fatal(fmt.Errorf("frontend missing: run make build"))
