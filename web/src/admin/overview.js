@@ -1,20 +1,35 @@
 import { request } from '../api.js';
-import { escape as e, feedback, disabled, render, delegate, lifetime } from '../shared/dom.js';
+import { feedback, disabled, render, delegate, lifetime } from '../shared/dom.js';
 import { listSearch } from '../shared/list-search.js';
 import { pager } from './answer-library-view.js';
+import { serviceStatus, overviewLinks, conflictRows, systemDetails } from './overview-view.js';
+
 export function mountOverview(host) {
-  const life = lifetime(); let metrics = {}, conflicts = [], total = 0, offset = 0, error = '', busy = false;
+  const life = lifetime(), abort = new AbortController();
+  let metrics = null, conflicts = [], total = 0, offset = 0, error = '', busy = false, loaded = false;
   const search = listSearch(host, life, 'conflict-search', '搜索课程、题干或题目 ID', () => load(0), () => busy);
-  const labels = { users:'网站用户',activeUsers:'正常用户',availableCollectors:'可用采集账号',capturedAnswers:'标准答案',pendingOperations:'待核对操作',workerRestarts:'进程恢复次数' };
-  function draw() { if (!life.alive) return; render(host, `<header class="page-heading"><h1>管理概览</h1><button id="metrics-refresh"${disabled(busy)}>刷新</button></header>${feedback(error)}<div class="overview-status"><span class="status-pill ${metrics.ready ? 'done' : 'queued'}">${metrics.ready ? '服务正常' : '正在检查服务'}</span></div><div class="metric-grid">${Object.entries(labels).map(([key,label]) => `<div class="metric"><span>${label}</span><strong>${metrics[key] ?? '—'}</strong></div>`).join('')}</div><section class="surface"><header class="section-heading"><h2>答案采集</h2><a data-route href="/admin/collectors" class="button primary">管理采集账号</a></header><p class="muted">${metrics.availableCollectors ?? '—'} 个账号可用</p></section><section class="surface"><header class="section-heading"><h2>题库冲突</h2><span class="status-pill">${total} 条待核验</span></header>${search.markup()}${conflicts.map(c => `<div class="record-card"><strong>${e(c.title || '未命名课程')}</strong><p class="muted">班级 ${e(c.classroomId)} · 题目 ${e(c.problemId)}</p></div>`).join('') || `<p class="muted">${search.query ? '没有匹配的冲突记录' : '暂无冲突'}</p>`}${pager(offset,30,total,busy,'data-conflict-page')}</section>`); }
+  function draw() {
+    if (!life.alive) return;
+    const content = !loaded ? busy ? '<div class="loading-state" role="status">正在读取…</div>' : '<p class="overview-empty">暂时无法读取</p>' : `${total || search.query ? search.markup() : ''}${conflictRows(conflicts, search.query)}${pager(offset,30,total,busy,'data-conflict-page')}`;
+    render(host, `<div class="admin-overview"><header class="page-heading"><h1>概览</h1><div class="overview-actions">${serviceStatus(metrics)}<button id="metrics-refresh"${disabled(busy)}>刷新</button></div></header>${feedback(error)}${overviewLinks(metrics)}<section class="overview-conflicts" aria-busy="${busy}"><header class="section-heading"><h2>题库冲突</h2>${loaded ? `<span class="overview-count">${total}</span>` : ''}</header>${content}</section>${systemDetails(metrics)}</div>`);
+  }
   async function load(next = offset) {
-    if (busy) return; busy = true; error = ''; draw();
-    const results = await Promise.allSettled([request('/api/admin/metrics'),request(`/api/admin/conflicts?limit=30&offset=${next}&q=${encodeURIComponent(search.query)}`)]);
+    if (busy || !life.alive) return;
+    busy = true; error = ''; draw();
+    const results = await Promise.allSettled([
+      request('/api/admin/metrics', {signal:abort.signal}),
+      request(`/api/admin/conflicts?limit=30&offset=${next}&q=${encodeURIComponent(search.query)}`, {signal:abort.signal}),
+    ]);
     if (!life.alive) return;
     if (results[0].status === 'fulfilled') metrics = results[0].value;
-    if (results[1].status === 'fulfilled') { conflicts = results[1].value.conflicts || []; total = results[1].value.total || 0; offset = next; }
-    error = results.filter(r => r.status === 'rejected').map(r => r.reason.message).join('；'); busy = false; draw();
+    if (results[1].status === 'fulfilled') {
+      conflicts = results[1].value.conflicts || []; total = results[1].value.total || 0; offset = next; loaded = true;
+    }
+    error = results.filter(r => r.status === 'rejected').map(r => r.reason.message).join('；');
+    busy = false; draw();
   }
   life.add(delegate(host,'click','#metrics-refresh',() => load()));
-  life.add(delegate(host,'click','[data-conflict-page]',(_, el) => load(Number(el.dataset.conflictPage)))); load(); return life.dispose;
+  life.add(delegate(host,'click','[data-conflict-page]',(_, el) => load(Number(el.dataset.conflictPage))));
+  life.add(() => abort.abort());
+  load(); return life.dispose;
 }

@@ -18,10 +18,3 @@ export function answerText(q) {
   if (q.accepted_answers) return Object.entries(q.accepted_answers).map(([slot, values]) => `${slot}: ${values.join(' / ')}`).join('；');
   return q.reference_answer || q.error || '待获取';
 }
-// Platform HTML is converted to text, never mounted as active markup.
-function plain(value) {
-  return new DOMParser().parseFromString(String(value || ''), 'text/html').body.textContent || '';
-}
-export function questionGroups(data) {
-  return Object.values(data.database?.exercises || {}).map(ex => `<details class="answer-exercise" data-key="admin-exercise-${e(ex.leaf_id)}"><summary>${e(ex.section || ex.title || '练习')} <span class="muted">${(ex.questions || []).length} 题</span></summary>${(ex.questions || []).map(q => `<div class="answer-question"><strong>${e(q.index || '')}. ${e(plain(q.body_html || q.body || q.title) || `题目 ${q.problem_id || ''}`)}</strong>${(q.options || []).map(o => `<div class="muted">${e(o.key)}. ${e(plain(o.content || o.value))}</div>`).join('')}<p>答案：${e(answerText(q))}</p></div>`).join('')}</details>`).join('') || '<p class="empty-state">暂无题目</p>';
-}
