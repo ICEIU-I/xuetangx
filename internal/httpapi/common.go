@@ -76,7 +76,7 @@ func (s *Server) middleware(next http.Handler) http.Handler {
 		w.Header().Set("X-Request-ID", id)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "same-origin")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data: https://mp.weixin.qq.com; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'")
 		defer func() {
 			if recover() != nil {
 				slog.Error("request panic", "requestId", id)

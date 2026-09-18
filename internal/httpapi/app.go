@@ -18,6 +18,7 @@ type Server struct {
 	Engine         *workflow.Engine
 	Jobs           *jobs.Repository
 	Catalog        *catalog.Service
+	WeChat         *accounts.WeChatLogin
 	Assets         fs.FS
 	EmailDisabled  bool
 	TrustedProxies []*net.IPNet
@@ -33,6 +34,7 @@ func New(a *auth.Service, ac *accounts.Service, e *workflow.Engine, c *catalog.S
 func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()
 	s.authRoutes(m)
+	s.wechatRoutes(m)
 	s.accountRoutes(m)
 	s.jobRoutes(m)
 	s.advancedRoutes(m)
