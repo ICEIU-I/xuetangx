@@ -22,6 +22,24 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"users": list, "total": total})
 }
 func (s *Server) adminUserRoutes(m *http.ServeMux) {
+	m.Handle("GET /api/admin/users/{id}/jobs", s.admin(func(w http.ResponseWriter, r *http.Request) {
+		if !validUUID(r.PathValue("id")) {
+			http.NotFound(w, r)
+			return
+		}
+		limit, offset := page(r)
+		jobs, total, e := s.Jobs.List(r.Context(), r.PathValue("id"), limit, offset)
+		if e != nil {
+			writeError(w, e)
+			return
+		}
+		var email string
+		if e = s.Auth.DB.Pool.QueryRow(r.Context(), "SELECT email FROM users WHERE id=$1", r.PathValue("id")).Scan(&email); e != nil {
+			writeError(w, e)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"email": email, "jobs": jobs, "total": total})
+	}))
 	m.Handle("GET /api/admin/users/{id}", s.admin(func(w http.ResponseWriter, r *http.Request) {
 		if !validUUID(r.PathValue("id")) {
 			http.NotFound(w, r)

@@ -11,6 +11,7 @@ import { mountOverview } from '../admin/overview.js';
 import { mountCollectors } from '../admin/collectors.js';
 import { mountUsers } from '../admin/users.js';
 import { mountAnswers } from '../admin/answers.js';
+import { mountUserProgress } from '../admin/user-progress.js';
 export function mountWorkspace(host, user, logout) {
   const life = lifetime(), admin = user.admin;
   const nav = admin ? [['/admin','管理概览'],['/admin/collectors','采集账号'],['/admin/users','用户管理'],['/admin/answers','答案库'],['/admin/settings','账号设置']] : [['/learn','课程任务'],['/tasks','任务记录'],['/tools','更多工具'],['/settings','账号设置']];
@@ -22,9 +23,10 @@ export function mountWorkspace(host, user, logout) {
     if (admin && !route.path.startsWith('/admin')) { navigate('/admin',true); return; }
     if (!admin && route.path.startsWith('/admin')) { navigate('/learn',true); return; }
     disposePage(); main.innerHTML = '';
-    host.querySelectorAll('nav a').forEach(link => { const url = link.getAttribute('href'), selected = url === route.path || (url === '/tasks' && route.id); link.classList.toggle('selected',!!selected); if (selected) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current'); });
+    host.querySelectorAll('nav a').forEach(link => { const url = link.getAttribute('href'), selected = url === route.path || (url === '/tasks' && route.id) || (url === '/admin/users' && route.userId); link.classList.toggle('selected',!!selected); if (selected) link.setAttribute('aria-current','page'); else link.removeAttribute('aria-current'); });
     if (admin) {
-      if (route.path === '/admin/collectors') disposePage = mountCollectors(main);
+      if (route.userId) disposePage = mountUserProgress(main, route.userId);
+      else if (route.path === '/admin/collectors') disposePage = mountCollectors(main);
       else if (route.path === '/admin/users') disposePage = mountUsers(main);
       else if (route.path === '/admin/answers') disposePage = mountAnswers(main);
       else if (route.path === '/admin/settings') { main.innerHTML = '<header class="page-heading"><h1>账号设置</h1></header><div class="settings-stack"></div>'; disposePage = mountPassword(main.querySelector('.settings-stack')); }

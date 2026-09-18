@@ -1,4 +1,5 @@
 import { request } from '../api.js';
+import { navigate } from '../router.js';
 import { escape as e, field, json, feedback, disabled, render, delegate, lifetime } from '../shared/dom.js';
 export function mountUsers(host) {
   const life = lifetime(); let users = [], query = '', offset = 0, total = 0, selected, detail, detailLoading = false, busy = false, error = '', notice = '';
@@ -11,7 +12,7 @@ export function mountUsers(host) {
   life.add(delegate(host,'submit','#user-search',(event,form) => { event.preventDefault(); query = field(form,'query'); offset = 0; act(load); }));
   life.add(delegate(host,'click','#users-refresh',() => act(load)));
   life.add(delegate(host,'click','[data-page]',(_,el) => { offset = Number(el.dataset.page); act(load); }));
-  life.add(delegate(host,'click','[data-user]',(_,el) => { selected = users.find(u => u.id === el.dataset.user); detail = null; detailLoading = true; draw(); act(async () => { detail = await request(`/api/admin/users/${encodeURIComponent(selected.id)}`); }, '详情已加载'); }));
+  life.add(delegate(host,'click','[data-user]',(_,el) => navigate(`/admin/users/${encodeURIComponent(el.dataset.user)}`)));
   life.add(delegate(host,'click','#user-close',() => { selected = null; detail = null; detailLoading = false; draw(); }));
   life.add(delegate(host,'submit','#user-edit',(event,form) => { event.preventDefault(); const body = {email:field(form,'email')}, password = field(form,'password'); if (password) body.password = password; act(async () => { await request(`/api/admin/users/${encodeURIComponent(selected.id)}`,json('PATCH',body)); form.reset(); selected = null; detail = null; detailLoading = false; await load(); },'修改已保存，用户需重新登录。'); }));
   life.add(delegate(host,'click','#user-revoke',() => act(async () => { await request(`/api/admin/users/${encodeURIComponent(selected.id)}`,json('PATCH',{})); detail = await request(`/api/admin/users/${encodeURIComponent(selected.id)}`); detailLoading = false; },'已撤销登录')));

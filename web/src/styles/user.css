@@ -9,3 +9,9 @@
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
 .brand-title{display:inline-flex;align-items:center;font-size:21px;line-height:1;letter-spacing:.1em}.brand-caret{font-size:.8em}.brand-text{display:inline-block;overflow:hidden;white-space:nowrap;width:0;animation:ccf-type 4.6s steps(3,end) infinite}.brand-caret{display:inline-block;margin-left:1px;animation:ccf-blink 1s steps(1,end) infinite}@keyframes ccf-type{0%,100%{width:0}13%,78%{width:3.7ch}85%{width:0}}@keyframes ccf-blink{50%{opacity:0}}
 @media(prefers-reduced-motion:reduce){.brand-text{width:3.7ch;animation:none}.brand-caret{animation:none}}
+.admin-job-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.admin-job-tabs button.selected{background:var(--yellow)}
+.admin-task-progress .course-heading{margin-bottom:0}
+.admin-task-meta{border:var(--line);padding:9px 12px;background:var(--surface2);min-width:150px}
+.admin-task-meta span{display:block;color:var(--muted);font-size:11px}
+.admin-task-meta strong{display:block;margin-top:3px}
