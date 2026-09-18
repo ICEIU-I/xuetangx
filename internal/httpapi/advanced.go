@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"fmt"
-	"github.com/jackc/pgx/v5"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -97,7 +96,7 @@ func (s *Server) advancedRoutes(m *http.ServeMux) {
 	m.Handle("GET /api/answers", s.require(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"count": 0, "list": []any{}})
 	}))
-	m.Handle("GET /api/answer-bank/{classroomId}", s.admin(s.answerBank))
+	s.answerBankRoutes(m)
 	m.Handle("POST /api/video/inspect", s.require(s.inspect))
 }
 func (s *Server) scan(w http.ResponseWriter, r *http.Request, kind string) {
@@ -178,39 +177,6 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		right += correct
 	}
 	writeJSON(w, 200, map[string]any{"ok": true, "sections": sections, "totalQ": total, "doneQ": done, "rightQ": right})
-}
-func (s *Server) answerBank(w http.ResponseWriter, r *http.Request) {
-	id, e := strconv.ParseInt(r.PathValue("classroomId"), 10, 64)
-	if e != nil || id <= 0 {
-		writeError(w, fault.New("INVALID_INPUT", "课程标识无效"))
-		return
-	}
-	var c domain.Course
-	e = s.Auth.DB.Pool.QueryRow(r.Context(), `SELECT id,classroom_id,sign,course_sign,title,url FROM courses WHERE classroom_id=$1 ORDER BY updated_at DESC LIMIT 1`, id).Scan(&c.ID, &c.ClassroomID, &c.Sign, &c.CourseSign, &c.Title, &c.URL)
-	if e == pgx.ErrNoRows {
-		writeError(w, fault.New("NOT_FOUND", "题库课程不存在"))
-		return
-	}
-	if e != nil {
-		writeError(w, e)
-		return
-	}
-	limit, offset := page(r)
-	if r.URL.Query().Get("download") == "1" {
-		limit = 10000
-		offset = 0
-	}
-	out, e := s.Engine.Bank.Export(r.Context(), c, limit, offset)
-	if e != nil {
-		writeError(w, e)
-		return
-	}
-	if r.URL.Query().Get("download") == "1" {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=answers-%d.json", id))
-		writeJSON(w, 200, out["database"])
-		return
-	}
-	writeJSON(w, 200, out)
 }
 func (s *Server) inspect(w http.ResponseWriter, r *http.Request) {
 	var v struct{ URL string }

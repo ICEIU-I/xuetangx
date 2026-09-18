@@ -1,22 +1,32 @@
 import { request } from '../api.js';
+import { currentRoute } from '../router.js';
 import { escape as e, disabled, feedback, render, delegate, lifetime } from '../shared/dom.js';
+import { courseName, courseCards, questionGroups, downloadURL, pager } from './answer-library-view.js';
 
 export function mountAnswers(host) {
-  const life = lifetime();
-  let classroomId = '31384299', data = null, busy = false, error = '';
+  const life = lifetime(), abort = new AbortController();
+  const classroomId = currentRoute().query.get('course') || '';
+  const limit = classroomId ? 100 : 20;
+  let data = null, offset = 0, busy = false, error = '';
   function draw() {
     if (!life.alive) return;
-    render(host, `<header class="page-heading"><h1>答案库</h1></header><section class="surface admin-answer-library"><form id="answer-library-form" class="input-action"><label for="answer-classroom">课程班级 ID<input id="answer-classroom" name="classroomId" inputmode="numeric" value="${e(classroomId)}" required></label><button class="primary"${disabled(busy)}>查看</button></form>${feedback(error)}${busy ? '<div class="loading-state">正在读取题库…</div>' : data ? `<header class="section-heading"><h2>课程题库</h2><a class="button" href="/api/answer-bank/${encodeURIComponent(classroomId)}?download=1">下载 JSON</a></header><p class="muted">共 ${data.summary?.totalQuestions || data.pagination?.total || 0} 道题，已收录 ${data.summary?.capturedAnswers || 0} 道。</p>${Object.values(data.database?.exercises || {}).map(ex => `<details class="answer-exercise" data-key="admin-exercise-${e(ex.leaf_id)}"><summary>${e(ex.section || ex.title || '练习')} <span class="muted">${(ex.questions || []).length} 题</span></summary>${(ex.questions || []).map(q => `<div class="answer-question"><strong>${e(q.index || '')}. ${e(q.body || q.title || `题目 ${q.problem_id || ''}`)}</strong><p>${e(q.answer || q.error || '待获取')}</p></div>`).join('')}</details>`).join('') || '<p class="empty-state">暂无题目</p>'}` : '<p class="empty-state">输入班级 ID后查看答案库。</p>'}</section>`);
+    const title = classroomId ? courseName(data?.database?.course) : '答案库';
+    render(host, `<header class="page-heading"><div>${classroomId ? '<a class="back-link" data-route href="/admin/answers">← 全部题库</a>' : ''}<h1>${e(classroomId && !data ? '课程题库' : title)}</h1></div><button id="answer-library-refresh"${disabled(busy)}>刷新</button></header>${feedback(error)}${busy && !data ? '<section class="surface loading-state" role="status">正在读取题库…</section>' : !data ? '<button id="answer-library-retry">重试</button>' : classroomId ? `<section class="surface admin-answer-library"><header class="section-heading"><span>共 ${data.pagination?.total || 0} 道题</span><a class="button" href="${downloadURL(classroomId)}">下载 JSON</a></header>${questionGroups(data)}${pager(offset,limit,data.pagination?.total || 0,busy,'data-bank-page')}</section>` : `<p class="muted">${data.total} 门课程</p>${courseCards(data.courses || [])}${pager(offset,limit,data.total,busy,'data-bank-page')}`}`);
   }
-  async function load() {
-    const form = host.querySelector('#answer-library-form');
-    classroomId = new FormData(form).get('classroomId')?.toString().trim() || '';
-    if (!/^\d+$/.test(classroomId)) { error = '请输入有效的班级 ID'; draw(); return; }
-    busy = true; error = ''; data = null; draw();
-    try { data = await request(`/api/answer-bank/${encodeURIComponent(classroomId)}?limit=100`); }
-    catch (err) { error = err.message || '题库读取失败'; }
+  async function load(nextOffset = offset) {
+    if (busy || !life.alive) return;
+    busy = true; error = ''; draw();
+    try {
+      if (classroomId && !/^\d+$/.test(classroomId)) throw new Error('课程标识无效');
+      const path = classroomId ? `/api/answer-bank/${encodeURIComponent(classroomId)}` : '/api/answer-bank';
+      const result = await request(`${path}?limit=${limit}&offset=${nextOffset}`, { signal: abort.signal });
+      if (!life.alive) return;
+      data = result; offset = nextOffset;
+    } catch (err) { if (life.alive) error = err.message || '题库读取失败'; }
     finally { busy = false; draw(); }
   }
-  life.add(delegate(host, 'submit', '#answer-library-form', event => { event.preventDefault(); void load(); }));
-  draw(); void load(); return life.dispose;
+  life.add(delegate(host, 'click', '#answer-library-refresh, #answer-library-retry', () => void load()));
+  life.add(delegate(host, 'click', '[data-bank-page]', (_, el) => void load(Number(el.dataset.bankPage))));
+  life.add(() => abort.abort());
+  void load(); return life.dispose;
 }

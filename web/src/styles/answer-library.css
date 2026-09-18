@@ -1,0 +1,11 @@
+.answer-bank-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.answer-bank-card{margin:0;display:flex;flex-direction:column;align-items:flex-start;min-width:0;border-top:6px solid var(--blue)}
+.answer-bank-card:nth-child(3n+2){border-top-color:var(--purple)}
+.answer-bank-card:nth-child(3n){border-top-color:var(--green)}
+.answer-bank-card h2{font-size:20px;overflow-wrap:anywhere}
+.answer-bank-counts{display:flex;flex-wrap:wrap;gap:20px;margin:4px 0 14px}
+.answer-bank-counts strong{font-size:22px;margin-left:4px}
+.answer-bank-card .row{margin-top:auto;padding-top:18px}
+.admin-answer-library .section-heading{flex-wrap:wrap;gap:12px}
+.admin-answer-library .answer-question{overflow-wrap:anywhere}
+@media(max-width:650px){.answer-bank-grid{grid-template-columns:1fr}}
