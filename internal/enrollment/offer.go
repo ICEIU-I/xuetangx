@@ -10,6 +10,16 @@ import (
 type Offer struct{ ProductID, SKUID int64 }
 
 func Select(c domain.Course, product, classrooms, pricing wire.Object) (Offer, error) {
+	return selectOffer(c, product, classrooms, pricing, false)
+}
+
+// SelectForUser includes the zero-price trial SKU used by the fixed answer-bank
+// course. The shared collector keeps using Select's older status allowlist.
+func SelectForUser(c domain.Course, product, classrooms, pricing wire.Object) (Offer, error) {
+	return selectOffer(c, product, classrooms, pricing, true)
+}
+
+func selectOffer(c domain.Course, product, classrooms, pricing wire.Object, userTrial bool) (Offer, error) {
 	invalid := func() (Offer, error) {
 		return Offer{}, fault.New("ENROLLMENT_REQUIRED", "无法确认对应班级的免费加入选项")
 	}
@@ -44,7 +54,8 @@ func Select(c domain.Course, product, classrooms, pricing wire.Object) (Offer, e
 		sku, err := wire.ID(x["sku_id"])
 		// Only the exact zero-price join button is eligible. Paid upgrades, trial
 		// promotions, absent prices, closed classes and login prompts are excluded.
-		if !ok || price != 0 || !valid || (status != 5 && status != 6) || err != nil {
+		statusOK := status == 5 || status == 6 || (userTrial && status == 12)
+		if !ok || price != 0 || !valid || !statusOK || err != nil {
 			continue
 		}
 		if id, has := x["classroom_id"]; has {

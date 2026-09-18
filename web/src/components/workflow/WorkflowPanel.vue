@@ -15,10 +15,9 @@ async function refresh() {
   const state = await api.workflowState(); jobs.value = state.jobs; rateLimits.value = state.rateLimits || {}; sharedCollectors.value = state.sharedCollectors || 0; collectorLimits.value = state.collectorLimits || {};
 }
 async function load() {
-  if (!accountId.value) return;
   const id = accountId.value; busy.value = true; error.value = '';
   try {
-    const result = await api.videoCourses(); if (id !== accountId.value) return;
+    const result = await api.workflowCourses(); if (id !== accountId.value) return;
     courses.value = result.courses; if (!courses.value.some(course => course.url === courseUrl.value)) courseUrl.value = courses.value[0]?.url || '';
     await refresh();
   } catch (e) { if (id === accountId.value) error.value = e.message; }
@@ -72,7 +71,7 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
     <div class="workflow-heading"><div><h2 id="workflow-title">一键完成课程</h2><p class="dim">视频、图文、讨论同时推进；已有答案直接作答，缺失答案由全站答案采集账号补齐。</p></div><span class="tag" :class="job?.status === 'done' ? 'ok' : running ? 'run' : ''">{{ names[job?.status] || '准备就绪' }}</span></div>
     <label for="workflow-course">选择课程</label>
     <div class="course-line">
-      <select id="workflow-course" v-model="courseUrl" :disabled="!session.connected || busy || running"><option value="" disabled>请选择已选课程</option><option v-for="course in courses" :key="course.classroomId" :value="course.url">{{ course.title }}</option></select>
+      <select id="workflow-course" v-model="courseUrl" :disabled="!session.connected || busy || running"><option value="" disabled>请选择课程</option><option v-for="course in courses" :key="course.classroomId" :value="course.url">{{ course.title }}</option></select>
       <label for="workflow-concurrency">每类任务并发</label><select id="workflow-concurrency" v-model.number="concurrency" :disabled="running"><option :value="1">1</option><option :value="2">2</option><option :value="3">3</option></select>
       <button :disabled="!session.connected || busy || running" @click="load">刷新课程</button>
     </div>

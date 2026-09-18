@@ -14,6 +14,7 @@ const j = request;
 export const api = {
   session: () => j('/api/session'),
   workflowState: (offset = 0, limit = 25) => j(`/api/workflow/state?offset=${offset}&limit=${limit}`),
+  workflowCourses: () => j('/api/workflow/courses'),
   workflowStart: (courseUrl, concurrency = 3) => j('/api/workflow/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
   workflowControl: (id, action) => j(`/api/workflow/${encodeURIComponent(id)}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
   testConnect: (cookie) => j('/api/test-cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),

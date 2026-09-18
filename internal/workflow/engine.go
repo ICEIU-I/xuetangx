@@ -217,6 +217,15 @@ func (e *Engine) Start(ctx context.Context, owner string, input domain.Start) (d
 		return domain.Job{}, err
 	}
 	course, err := e.Catalog.Authorize(ctx, a, target)
+	if fault.Code(err) == "ENROLLMENT_REQUIRED" && catalog.IsFixedCourse(target) {
+		if e.Ops == nil {
+			return domain.Job{}, fault.New("UNAVAILABLE", "课程选课服务暂不可用")
+		}
+		if enrollErr := e.Ops.EnrollFreeForUser(ctx, a, catalog.FixedCourse()); enrollErr != nil {
+			return domain.Job{}, enrollErr
+		}
+		course, err = e.Catalog.Authorize(ctx, a, target)
+	}
 	if err != nil {
 		return domain.Job{}, err
 	}

@@ -37,6 +37,7 @@ func (s *Server) Handler() http.Handler {
 	s.wechatRoutes(m)
 	s.accountRoutes(m)
 	s.jobRoutes(m)
+	s.workflowCourseRoutes(m)
 	s.advancedRoutes(m)
 	s.adminRoutes(m)
 	m.Handle("GET /api/events", s.require(s.events))

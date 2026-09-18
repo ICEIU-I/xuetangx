@@ -30,3 +30,16 @@ func TestOnlyExactFreeJoin(t *testing.T) {
 		})
 	}
 }
+
+func TestFixedCourseTrialStatusIsUserOnly(t *testing.T) {
+	c := domain.Course{ClassroomID: 12, Sign: "s", CourseSign: "c"}
+	product := wire.Object{"id": 99, "sign": "s", "course_sign": "c"}
+	classes := wire.Object{"current": []any{wire.Object{"classroom_id": 12}}}
+	pricing := wire.Object{"product_id": 99, "sku_info": []any{wire.Object{"sku_id": 22, "current_price": 0, "status": 12}}}
+	if _, err := enrollment.Select(c, product, classes, pricing); err == nil {
+		t.Fatal("collector enrollment accepted a user-trial status")
+	}
+	if offer, err := enrollment.SelectForUser(c, product, classes, pricing); err != nil || offer.ProductID != 99 || offer.SKUID != 22 {
+		t.Fatalf("user trial was not accepted: %+v, %v", offer, err)
+	}
+}

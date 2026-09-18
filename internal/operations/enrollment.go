@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"xuetangx/internal/catalog"
 	"xuetangx/internal/domain"
 	"xuetangx/internal/enrollment"
 	"xuetangx/internal/fault"
@@ -16,6 +17,20 @@ func (s *Service) EnrollFree(ctx context.Context, a domain.Account, c domain.Cou
 	if !a.Shared {
 		return fault.New("FORBIDDEN", "自动加入课程仅用于全站答案采集账号")
 	}
+	return s.enrollFree(ctx, a, c, false)
+}
+
+// EnrollFreeForUser is used only by the unified workflow for its fixed
+// course. It accepts the platform's current zero-price trial SKU (status 12)
+// while EnrollFree retains the narrower collector contract.
+func (s *Service) EnrollFreeForUser(ctx context.Context, a domain.Account, c domain.Course) error {
+	if a.Shared || a.Role != "primary" || !catalog.IsFixedCourse(c) {
+		return fault.New("FORBIDDEN", "自动加入课程仅用于正式账号")
+	}
+	return s.enrollFree(ctx, a, c, true)
+}
+
+func (s *Service) enrollFree(ctx context.Context, a domain.Account, c domain.Course, userTrial bool) error {
 	key := Key("enrollment", a, c, 0, 0, "free")
 	result := s.group.DoChan(key+":check", func() (any, error) {
 		_, err := s.Catalog.Authorize(ctx, a, c)
@@ -37,7 +52,12 @@ func (s *Service) EnrollFree(ctx context.Context, a domain.Account, c domain.Cou
 		if err != nil {
 			return nil, err
 		}
-		offer, err := enrollment.Select(c, product, classes, pricing)
+		var offer enrollment.Offer
+		if userTrial {
+			offer, err = enrollment.SelectForUser(c, product, classes, pricing)
+		} else {
+			offer, err = enrollment.Select(c, product, classes, pricing)
+		}
 		if err != nil {
 			return nil, err
 		}
