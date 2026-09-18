@@ -31,11 +31,11 @@ services:
       APP_ENV: production
       DATABASE_URL_FILE: /run/secrets/database_url
       CREDENTIAL_KEY_FILE: /run/secrets/credential_keys.json
-      PUBLIC_BASE_URL: https://xuetangx.example.org
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set HTTPS public origin}
       MAIL_ENABLED: "false"
       REQUIRE_EMAIL_VERIFICATION: "false"
       LISTEN_ADDR: 0.0.0.0:8788
-      TRUSTED_PROXY_CIDRS: ${TUNNEL_IP:?set TUNNEL_IP}/32
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:?set exact trusted proxy CIDRs}
     secrets: [database_url, credential_keys.json]
     ports: ["127.0.0.1:18788:8788"]
     networks: [backend, edge]
