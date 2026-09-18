@@ -96,7 +96,7 @@ func (s *Server) advancedRoutes(m *http.ServeMux) {
 	m.Handle("GET /api/answers", s.require(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"count": 0, "list": []any{}})
 	}))
-	m.Handle("GET /api/answer-bank/{classroomId}", s.require(s.answerBank))
+	m.Handle("GET /api/answer-bank/{classroomId}", s.admin(s.answerBank))
 	m.Handle("POST /api/video/inspect", s.require(s.inspect))
 }
 func (s *Server) scan(w http.ResponseWriter, r *http.Request, kind string) {
