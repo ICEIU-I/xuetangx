@@ -40,7 +40,6 @@ export const api = {
   videoRunCourse: (courseUrl, concurrency) => j('/api/video/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
   collectAnswers: (courseUrl, submitUnanswered, concurrency = 1) => j('/api/answer-bank/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, submitUnanswered, concurrency }) }),
   stopAnswers: () => j('/api/answer-bank/stop', { method: 'POST' }),
-  answerDatabase: (classroomId, offset = 0) => j(`/api/answer-bank/${encodeURIComponent(classroomId)}?limit=50&offset=${offset}`),
   articleScan: (courseUrl) => j('/api/article/scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl }) }),
   articleRun: (courseUrl, concurrency = 1) => j('/api/article/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ courseUrl, concurrency }) }),
   articleStop: () => j('/api/article/stop', { method: 'POST' }),
