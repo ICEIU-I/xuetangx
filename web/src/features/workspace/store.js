@@ -164,5 +164,5 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     finally { state.actionId = ''; }
   }
   function dispose() { closed = true; epoch++; refreshId++; scores.dispose(); stream?.close(); clearInterval(timer); changes.clear(); }
-  return { state, currentJob, subscribe: changes.subscribe, initialize, refresh, loadScore, getJob, setSession, connected, disconnect, start, checkStart, control, mergeJob, dispose };
+  return { state, currentJob, subscribe: changes.subscribe, initialize, refresh, loadScore, watchScore: scores.watch, getJob, setSession, connected, disconnect, start, checkStart, control, mergeJob, dispose };
 }

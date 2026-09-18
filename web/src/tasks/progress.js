@@ -1,4 +1,4 @@
-import { scoreMarkup } from '../learning/score.js';
+import { scoreMarkup, canShowScore } from '../learning/score.js';
 import { modules, collectorModule, finished, percent, summary, statusNames, actions, countdown, primaryId, formatDate } from '../features/workspace/presentation.js';
 import { escape as e, feedback, disabled, render, delegate, lifetime } from '../shared/dom.js';
 import { mountConnect } from '../learning/connect.js';
@@ -16,7 +16,7 @@ export function mountProgress(host, workspace, id) {
     const visible = [...modules, collectorModule].filter(m => job.modules[m.kind]);
     const failures = Object.values(job.modules).flatMap(m => (m.results || []).filter(item => item.error));
     const blocked = Object.entries(job.modules).filter(([,m]) => ['blocked','error','waiting_account','waiting_enrollment','waiting_answers'].includes(m.status));
-    render(content, `<section class="surface task-progress"><header class="task-heading"><h2>${e(job.course.title)}</h2><span class="status-pill ${e(job.status)}">${waiting ? '自动等待' : statusNames[job.status] || '需要处理'}</span></header>${scoreMarkup(state, job)}<div class="overall-progress"><div><strong>${stats.completed}</strong><span> / ${stats.known ? stats.total : '—'}</span><small>${stats.known ? '已完成' : '正在扫描总量'}</small></div>${stats.known ? `<span class="overall-percent">${stats.percent}%</span>` : ''}</div>${stats.known ? `<progress value="${stats.percent}" max="100" aria-label="课程总体进度"></progress>` : '<div class="unknown-progress" aria-label="正在扫描课程"></div>'}
+    render(content, `<section class="surface task-progress"><header class="course-heading"><div class="course-heading-info"><h2>${e(job.course.title)}</h2><span class="status-pill ${e(job.status)}">${waiting ? '自动等待' : statusNames[job.status] || '需要处理'}</span></div>${scoreMarkup(state, job)}</header><div class="overall-progress"><div><strong>${stats.completed}</strong><span> / ${stats.known ? stats.total : '—'}</span><small>${stats.known ? '已完成' : '正在扫描总量'}</small></div>${stats.known ? `<span class="overall-percent">${stats.percent}%</span>` : ''}</div>${stats.known ? `<progress value="${stats.percent}" max="100" aria-label="课程总体进度"></progress>` : '<div class="unknown-progress" aria-label="正在扫描课程"></div>'}
       ${waiting ? `<div class="feedback waiting" role="status"><strong>${collectorWait && !primaryWait ? '答案采集暂时受限' : '平台暂时限制访问'}</strong><span>系统将在 ${waiting} 秒后重试。</span></div>` : ''}${feedback(state.syncError,'waiting')}
       ${needsAccount && !['done','stopped'].includes(job.status) ? `<div class="feedback waiting"><span>${!same ? '请连接此任务原来的学堂在线账号。' : '学堂在线登录已失效，请重新连接后继续。'}</span><button id="reconnect-task">${reconnectDispose ? '收起扫码' : '重新连接账号'}</button></div>` : ''}
       <div class="module-list">${visible.map((item,index) => { const m = job.modules[item.kind]; return `<div class="module-row" data-module="${item.kind}"><span class="module-icon">0${index+1}</span><div class="module-body"><div class="module-line"><strong>${item.title}</strong><span class="muted">${statusNames[m.status] || '等待开始'}</span></div><progress value="${percent(m)}" max="100" aria-label="${item.title}进度"></progress>${m.message && m.status !== 'done' ? `<p>${e(m.message)}</p>` : ''}</div><div class="module-count">${finished(m)}<span> / ${m.total || (m.status === 'done' ? 0 : '—')}</span></div></div>`; }).join('')}</div>
@@ -26,5 +26,6 @@ export function mountProgress(host, workspace, id) {
   life.add(delegate(content,'click','[data-control]', async (_, button) => { error = ''; try { await workspace.control(id, button.dataset.control); } catch (err) { error = err.message; } draw(); }));
   life.add(delegate(content, 'click', '#score-refresh', () => workspace.loadScore()));
   life.add(delegate(content,'click','#reconnect-task', () => { const target = host.querySelector('.reconnect-content'); if (reconnectDispose) { reconnectDispose(); reconnectDispose = null; target.innerHTML = ''; } else reconnectDispose = mountConnect(target, workspace); draw(); }));
+  life.add(workspace.watchScore(() => { const job = workspace.state.jobs.find(j => j.id === id); return !!job && canShowScore(workspace.state, job); }));
   life.add(workspace.subscribe(draw)); const timer = setInterval(draw, 1000); life.add(() => clearInterval(timer)); life.add(() => reconnectDispose?.()); draw(); return life.dispose;
 }

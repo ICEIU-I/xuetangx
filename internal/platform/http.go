@@ -71,6 +71,9 @@ func ReadOnly(method, path string) bool {
 	if method != "GET" {
 		return false
 	}
+	if path == "/api/v1/lms/learn/get_evaluation_detail/" {
+		return true
+	}
 	for _, prefix := range []string{"/api/v1/lms/product/get_product_basic_info/", "/api/v1/lms/product/classroom/", "/api/v1/lms/product/sku_pay_detail/", "/api/v1/u/user/basic_profile/", "/api/v1/lms/user/user-courses/", "/api/v1/lms/learn/leaf_info/", "/api/v1/lms/learn/course/", "/api/v1/lms/exercise/get_exercise_list/", "/api/v1/lms/service/playurl/", "/api/v1/lms/forum/unit/discussion/", "/video-log/get_video_watch_progress/"} {
 		if strings.HasPrefix(path, prefix) {
 			return true
