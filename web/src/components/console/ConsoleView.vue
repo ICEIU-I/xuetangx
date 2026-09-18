@@ -158,8 +158,6 @@ onMounted(async () => {
   try {
     const current = await api.session();
     if (current.connected) { await onConnected(current.user); return; }
-    const saved = localStorage.getItem('xt_console_cookie');
-    if (saved) { const result = await api.connect(saved); await onConnected(result.user); }
   } catch (error) { pushLog('fail', '连接失败', null, error.message); }
 
 });

@@ -77,19 +77,15 @@ onUnmounted(() => { if (wxTimer) clearInterval(wxTimer); });
     </div>
 
     <div v-else>
-      <textarea
-        v-model="cookie" rows="3"
-        placeholder="粘贴浏览器 cookie（须含 sessionid 和 csrftoken）&#10;形如：sessionid=xxx; csrftoken=yyy; login_type=E; ..."
-      ></textarea>
-      <div class="row" style="margin-top:10px">
-        <button class="primary" :disabled="busy || !cookie.trim()" @click="connect">
-          {{ busy ? '校验中…' : '连接' }}
-        </button>
-        <span v-if="err" class="tag err"><span class="dot"></span>{{ err }}</span>
-      </div>
       <div class="wechat-login">
-        <div class="dim">也可以直接扫码登录学堂在线，扫码后 Cookie 会加密保存到当前正式账号。</div>
-        <button :disabled="busy || wxActive()" @click="startWechat">{{ wxActive() ? '等待微信扫码…' : '微信扫码登录学堂在线' }}</button>
+        <div class="login-method-heading">
+          <div class="row" style="gap:8px;align-items:center">
+            <strong>微信扫码登录</strong>
+            <span class="tag recommended">推荐</span>
+          </div>
+          <div class="dim">使用微信扫一扫登录学堂在线，登录成功后会自动安全保存平台登录状态。</div>
+        </div>
+        <button class="primary" :disabled="busy || wxActive()" @click="startWechat">{{ wxActive() ? '等待微信扫码…' : '生成微信登录二维码' }}</button>
         <div v-if="wx.id" class="wechat-state" aria-live="polite">
           <img v-if="wx.qrUrl" :src="wx.qrUrl" alt="学堂在线微信登录二维码" />
           <span v-if="wx.status === 'starting'" class="dim">正在生成二维码…</span>
@@ -98,12 +94,35 @@ onUnmounted(() => { if (wxTimer) clearInterval(wxTimer); });
           <button v-if="wxActive()" @click="cancelWechat">取消</button>
         </div>
       </div>
+      <details class="cookie-fallback">
+        <summary>备用方式：粘贴学堂在线 Cookie</summary>
+        <div class="cookie-fallback-body">
+          <div class="dim">仅在微信扫码不可用时使用。Cookie 只会提交到当前服务端校验，不会保存到浏览器。</div>
+          <textarea
+            v-model="cookie" rows="3"
+            placeholder="须含 sessionid 和 csrftoken，例如：sessionid=xxx; csrftoken=yyy; login_type=E; ..."
+          ></textarea>
+          <div class="row">
+            <button :disabled="busy || !cookie.trim()" @click="connect">
+              {{ busy ? '校验中…' : '使用 Cookie 连接' }}
+            </button>
+          </div>
+        </div>
+      </details>
+      <div v-if="err" class="tag err login-error"><span class="dot"></span>{{ err }}</div>
     </div>
   </div>
 </template>
 <style scoped>
-.wechat-login { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); display: grid; gap: 8px; }
+.wechat-login { padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel-2); display: grid; gap: 10px; }
+.login-method-heading { display: grid; gap: 5px; }
+.recommended { color: var(--text-accent); border-color: var(--text-accent); }
 .wechat-login button { width: fit-content; }
 .wechat-state { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .wechat-state img { width: 180px; height: 180px; object-fit: contain; border: 1px solid var(--border); border-radius: 8px; background: white; }
+.cookie-fallback { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+.cookie-fallback summary { cursor: pointer; color: var(--text-dim); }
+.cookie-fallback-body { display: grid; gap: 8px; margin-top: 10px; }
+.cookie-fallback-body textarea { margin: 0; }
+.login-error { display: inline-flex; margin-top: 10px; }
 </style>
