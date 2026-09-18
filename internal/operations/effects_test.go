@@ -104,11 +104,56 @@ func TestProgressMissingStateAndOtherEffectsNeverBlindlyReplay(t *testing.T) {
 				}
 				return platform.Response{Status: 200, JSON: wire.Object{"success": true, "data": wire.Object{"id": 34, "classroom_id": c.ClassroomID, "user_id": a.UserID, "course_id": 99}}}, nil
 			})
+			if kind == "video" || kind == "article" {
+				op.Wait = func(context.Context, time.Duration) error { return context.Canceled }
+			}
 			_, err = op.Effect(ctx, a, c, 34, kind, "", "POST", "/mock", nil)
-			if fault.Code(err) != "INVALID_METADATA" && fault.Code(err) != "REVIEW_REQUIRED" {
+			if (kind == "video" || kind == "article") && err == nil {
+				t.Fatal("missing progress state did not remain pending")
+			}
+			if kind != "video" && kind != "article" && fault.Code(err) != "INVALID_METADATA" && fault.Code(err) != "REVIEW_REQUIRED" {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestProgressEffectRetriesWhenCompletionFieldIsTemporarilyMissing(t *testing.T) {
+	db := testkit.Database(t)
+	a, c := testkit.Seed(t, db)
+	ctx := context.Background()
+	journal := &operations.Journal{DB: db}
+	rec, err := journal.Load(ctx, operations.Key("video", a, c, 34, 0, "missing-field"), "video", a, c, 34, 0, "missing-field")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = journal.Save(ctx, &rec, "posted", 0, false, wire.Object{"accepted": true}); err != nil {
+		t.Fatal(err)
+	}
+	reads, writes := 0, 0
+	call := func(_ context.Context, _ domain.Account, method, path string, _ any) (platform.Response, error) {
+		if method == "GET" {
+			reads++
+			d := wire.Object{"id": 34, "classroom_id": c.ClassroomID, "course_id": 99, "user_id": a.UserID}
+			if strings.Contains(path, "get_video_watch_progress") {
+				progress := wire.Object{}
+				if reads > 2 {
+					progress["completed"] = false
+				}
+				d = wire.Object{"34": progress}
+			}
+			return platform.Response{Status: 200, JSON: wire.Object{"success": true, "data": d}}, nil
+		}
+		writes++
+		return platform.Response{Status: 200, JSON: wire.Object{"success": true, "data": wire.Object{}}}, nil
+	}
+	op := operations.New(journal, nil, nil, call)
+	op.Wait = func(context.Context, time.Duration) error { return nil }
+	if _, err = op.Effect(ctx, a, c, 34, "video", "missing-field", "POST", "/progress", nil); err != nil {
+		t.Fatal(err)
+	}
+	if reads < 3 || writes != 1 {
+		t.Fatalf("missing completion state was not retried safely: reads=%d writes=%d", reads, writes)
 	}
 }
 

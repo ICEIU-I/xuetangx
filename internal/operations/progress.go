@@ -56,5 +56,8 @@ func completionField(v any) (bool, error) {
 	if n, ok := wire.Int(v); ok && (n == 0 || n == 1) {
 		return n == 1, nil
 	}
-	return false, fault.New("INVALID_METADATA", "进度回查缺少有效完成状态")
+	// The platform occasionally omits the completion flag while its progress
+	// update is still being indexed. Treat that as an unconfirmed state so the
+	// caller backs off and checks again instead of permanently failing the item.
+	return false, fault.New("UNCONFIRMED", "进度回查缺少有效完成状态")
 }

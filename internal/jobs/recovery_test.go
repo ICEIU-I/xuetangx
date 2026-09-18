@@ -9,7 +9,7 @@ import (
 )
 
 func TestRecoverRespectsUserControlAndRepairsLegacyProgress(t *testing.T) {
-	for _, mode := range []string{"active", "paused", "stopped", "legacy_shutdown", "legacy_partial", "legacy_403", "legacy_403_limit", "older_partial", "unknown_discussion"} {
+	for _, mode := range []string{"active", "paused", "stopped", "legacy_shutdown", "legacy_partial", "legacy_403", "legacy_403_limit", "missing_progress", "older_partial", "unknown_discussion"} {
 		t.Run(mode, func(t *testing.T) {
 			db := testkit.Database(t)
 			a, c := testkit.Seed(t, db)
@@ -27,7 +27,7 @@ func TestRecoverRespectsUserControlAndRepairsLegacyProgress(t *testing.T) {
 				status, module, msg = "stopped", "stopped", "任务已停止"
 			case "legacy_shutdown":
 				status, module, msg = "paused", "paused", "服务已重启，点击继续后回查恢复"
-			case "legacy_partial", "legacy_403", "legacy_403_limit", "older_partial", "unknown_discussion":
+			case "legacy_partial", "legacy_403", "legacy_403_limit", "missing_progress", "older_partial", "unknown_discussion":
 				status, module, msg = "partial", "partial", "课程单元处理结束"
 			}
 			if _, err = db.Pool.Exec(ctx, "UPDATE jobs SET status=$2,created_at=now()-interval '1 minute' WHERE id=$1", id, status); err != nil {
@@ -46,7 +46,11 @@ func TestRecoverRespectsUserControlAndRepairsLegacyProgress(t *testing.T) {
 				}
 			}
 			if module == "partial" {
-				if _, err = db.Pool.Exec(ctx, "INSERT INTO job_items(job_id,kind,leaf_id,status,error) VALUES($1,$2,11,'failed','上次操作结果不确定，未重复发送')", id, kind); err != nil {
+				errorText := "上次操作结果不确定，未重复发送"
+				if mode == "missing_progress" {
+					errorText = "进度回查缺少有效完成状态"
+				}
+				if _, err = db.Pool.Exec(ctx, "INSERT INTO job_items(job_id,kind,leaf_id,status,error) VALUES($1,$2,11,'failed',$3)", id, kind, errorText); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -67,7 +71,7 @@ func TestRecoverRespectsUserControlAndRepairsLegacyProgress(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := status
-			if mode == "active" || mode == "legacy_shutdown" || mode == "legacy_partial" || mode == "legacy_403" || mode == "legacy_403_limit" {
+			if mode == "active" || mode == "legacy_shutdown" || mode == "legacy_partial" || mode == "legacy_403" || mode == "legacy_403_limit" || mode == "missing_progress" {
 				want = "queued"
 			}
 			if j.Status != want || j.Modules["article"].Status != "done" {

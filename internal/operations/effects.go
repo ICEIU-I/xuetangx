@@ -45,6 +45,13 @@ func (s *Service) Effect(ctx context.Context, a domain.Account, c domain.Course,
 			if retryable && r.State != "new" && r.State != "rejected" && r.State != "not_sent" {
 				complete, err := s.progressComplete(ctx, a, c, leaf, kind)
 				if err != nil {
+					if fault.Code(err) == "UNCONFIRMED" {
+						if e = s.Wait(ctx, platform.Backoff(attempt)); e != nil {
+							return nil, e
+						}
+						attempt = min(attempt+1, 7)
+						continue
+					}
 					return nil, err
 				}
 				if complete {
