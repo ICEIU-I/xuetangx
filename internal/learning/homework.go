@@ -39,7 +39,7 @@ func (r *Runner) homework(ctx context.Context, in Input) (Result, error) {
 	for {
 		waiting := false
 		running := false
-		e := pool(ctx, in.Concurrency, len(entries), func(i int) error {
+		e := pool(ctx, in.Concurrency, len(entries), func(ctx context.Context, i int) error {
 			en := entries[i]
 			k := key(en)
 			mu.Lock()

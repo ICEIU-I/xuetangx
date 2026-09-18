@@ -190,15 +190,6 @@ func (r *Repository) Aggregate(ctx context.Context, owner, id string) error {
 		return touch(ctx, tx, owner, id)
 	})
 }
-func (r *Repository) Recover(ctx context.Context) error {
-	return r.DB.Tx(ctx, func(tx pgx.Tx) error {
-		if _, e := tx.Exec(ctx, "UPDATE jobs SET status='paused',revision=revision+1 WHERE status IN ('running','queued','waiting_input')"); e != nil {
-			return e
-		}
-		_, e := tx.Exec(ctx, `UPDATE job_modules SET status='paused',generation=generation+1,message='服务已重启，点击继续后回查恢复' WHERE status IN ('running','queued','waiting_answers','waiting_account','waiting_enrollment','waiting_rate_limit')`)
-		return e
-	})
-}
 func (r *Repository) SetCoverage(ctx context.Context, owner, id string, c domain.Coverage) error {
 	_, e := r.DB.Pool.Exec(ctx, `INSERT INTO job_events(owner_id,job_id,event_type,payload) SELECT owner_id,id,'coverage',$3 FROM jobs WHERE id=$1 AND owner_id=$2`, id, owner, wire.JSON(c))
 	return e

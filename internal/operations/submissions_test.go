@@ -112,3 +112,45 @@ func TestMissingCountNeverRetriesAndBudgetSurvives(t *testing.T) {
 		t.Fatal("retry budget reset", posts)
 	}
 }
+
+func TestExplicitSubmissionRateRejectionsKeepRetrying(t *testing.T) {
+	for _, cancelWait := range []bool{false, true} {
+		t.Run(map[bool]string{false: "recover", true: "cancel"}[cancelWait], func(t *testing.T) {
+			db := testkit.Database(t)
+			a, c := testkit.Seed(t, db)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			ex := domain.Exercise{LeafID: 34, ExerciseID: 56, SKUID: 9}
+			p := domain.Problem{ID: 78, Content: json.RawMessage(`{"Type":"Judgement"}`), User: json.RawMessage(`{"my_count":0}`)}
+			b := &bank.Service{DB: db}
+			if err := b.Save(ctx, a, c, ex, p, wire.Object{"is_show_answer": true, "answer": []any{true}}, "exercise_list"); err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			op := operations.New(&operations.Journal{DB: db}, b, nil, func(context.Context, domain.Account, string, string, any) (platform.Response, error) {
+				calls++
+				if calls <= 6 {
+					return platform.Response{Status: 429}, nil
+				}
+				return platform.Response{Status: 200, JSON: wire.Object{"success": true, "data": wire.Object{"is_correct": true}}}, nil
+			})
+			op.Wait = func(ctx context.Context, delay time.Duration) error {
+				if delay < time.Second || delay > time.Minute {
+					return errors.New("invalid retry delay")
+				}
+				if cancelWait && calls == 6 {
+					cancel()
+				}
+				return ctx.Err()
+			}
+			_, err := op.Submit(ctx, a, c, ex, p, false)
+			if cancelWait {
+				if !errors.Is(err, context.Canceled) {
+					t.Fatal("cancel ignored", err)
+				}
+			} else if err != nil || calls != 7 {
+				t.Fatalf("calls=%d err=%v", calls, err)
+			}
+		})
+	}
+}

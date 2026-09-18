@@ -50,13 +50,20 @@ func TestSharedCollectorAccessRecovery(t *testing.T) {
 			if mode == "scan" {
 				transport.path = "/api/v1/lms/exercise/get_exercise_list/"
 			}
-			if mode == "exhausted" || mode == "pause" {
+			if mode == "exhausted" {
+				// Exceed the former retry budget, then recover without a
+				// manual resume. The workflow must keep backing off until the
+				// platform accepts the request.
+				transport.limit = 7
+			}
+			if mode == "pause" {
 				transport.limit = 100
 			}
 			keys := &secure.Keys{Active: "k", Values: map[string]string{"k": base64.StdEncoding.EncodeToString([]byte(strings.Repeat("k", 32)))}}
 			a := accounts.New(db, keys, mock.Client.Authenticate)
 			b := &bank.Service{DB: db}
 			broker := platform.NewBroker(a, transport)
+			broker.SetMinimumAccessCooldown(20 * time.Millisecond)
 			c := &catalog.Service{DB: db, Request: broker.Call}
 			engine, err := workflow.New(context.Background(), db, a, b, c, broker, operations.New(&operations.Journal{DB: db}, b, c, broker.Call), 10, 2)
 			if err != nil {
@@ -108,17 +115,13 @@ func TestSharedCollectorAccessRecovery(t *testing.T) {
 				t.Fatal("collector cooldown blocked primary account")
 			}
 			if mode == "exhausted" {
-				j := wait(func(j domain.Job) bool { return j.Status == "partial" })
-				if transport.calls.Load() != 6 || j.Modules["collector"].Status != "blocked" || !strings.Contains(j.Modules["collector"].Message, "已冷却重试 5 次") {
-					t.Fatalf("unbounded retries: calls=%d collector=%+v", transport.calls.Load(), j.Modules["collector"])
+				j := wait(func(j domain.Job) bool { return j.Status == "done" })
+				if transport.calls.Load() < 8 || j.Modules["collector"].Status != "done" {
+					t.Fatalf("unbounded retries did not recover: calls=%d collector=%+v", transport.calls.Load(), j.Modules["collector"])
 				}
 				var state string
-				if err := db.Pool.QueryRow(ctx, "SELECT state FROM operations WHERE kind='question'").Scan(&state); err != nil || state != "rejected" {
-					t.Fatal("explicit rejection journal", state, err)
-				}
-				transport.deny.Store(false)
-				if _, err = engine.Control(ctx, seed.Owner, job.ID, "resume", ""); err != nil {
-					t.Fatal(err)
+				if err := db.Pool.QueryRow(ctx, "SELECT state FROM operations WHERE kind='question'").Scan(&state); err != nil || state != "posted" {
+					t.Fatal("successful retry was not journaled", state, err)
 				}
 			}
 			if mode == "pause" {

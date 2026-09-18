@@ -45,9 +45,10 @@ const collectorTitle = computed(() => {
   return names[status] || (sharedCollectors.value ? '已配置' : '等待管理员配置');
 });
 const collectorMessage = computed(() => collectorActive.value && countdown(collectorLimit.value)
-  ? `${countdown(collectorLimit.value)} 秒后自动重试；403 最多重试 5 次`
+  ? `${countdown(collectorLimit.value)} 秒后自动重试；403 会持续退避重试直到平台恢复`
   : job.value?.modules.collector?.message || '缺少答案时自动采集；只免费加入课程');
-function percent(module) { return module?.total ? Math.min(100, Math.round((module.processed || 0) / module.total * 100)) : module?.status === 'done' ? 100 : 0; }
+function finished(module) { return (module?.completed || 0) + (module?.skipped || 0) - (module?.wrongExisting || 0); }
+function percent(module) { return module?.total ? Math.min(100, Math.floor(finished(module) / module.total * 100)) : module?.status === 'done' ? 100 : 0; }
 const failures = computed(() => Object.entries(job.value?.modules || {}).flatMap(([kind, value]) => (value.results || []).filter(item => item.error).map(item => ({ ...item, kind }))));
 let events, clock, polling, refreshing = false;
 watch(accountId, () => { courses.value = []; jobs.value = []; courseUrl.value = ''; error.value = ''; load(); });
@@ -90,7 +91,7 @@ onUnmounted(() => { events?.close(); clearInterval(clock); clearInterval(polling
     <div class="module-grid">
       <article v-for="item in modules" :key="item.kind" class="module-card" :data-module="item.kind">
         <div class="row"><strong>{{ item.icon }} {{ item.title }}</strong><span class="spacer"></span><span class="dim">{{ names[job?.modules[item.kind]?.status] || '待开始' }}</span></div>
-        <div class="module-count">{{ job?.modules[item.kind]?.processed || 0 }} <span class="dim">/ {{ job?.modules[item.kind]?.total ?? '—' }}</span></div>
+        <div class="module-count">{{ finished(job?.modules[item.kind]) }} <span class="dim">/ {{ job?.modules[item.kind]?.total ?? '—' }}</span></div>
         <progress :value="percent(job?.modules[item.kind])" max="100" :aria-label="item.title + '进度'"></progress>
         <p class="dim">{{ job?.modules[item.kind]?.message || '启动后自动处理未完成项目' }}</p>
       </article>

@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 	"xuetangx/internal/domain"
-	"xuetangx/internal/fault"
 	"xuetangx/internal/platform/wire"
 )
 
@@ -44,21 +43,22 @@ func TestAccessRetryWaitsAndRecoversReadsAndWrites(t *testing.T) {
 	}
 }
 
-func TestAccessRetryStopsAfterFiveRetries(t *testing.T) {
+func TestAccessRetryContinuesAfterFiveRetries(t *testing.T) {
 	var calls atomic.Int32
 	b := NewBroker(credentials{}, transportFunc(func(_ context.Context, _, _ string, _ any, _ string) (Response, error) {
-		calls.Add(1)
-		return Response{Status: 403, RetryAfter: "0.001"}, nil
+		n := calls.Add(1)
+		if n <= 7 {
+			return Response{Status: 403, RetryAfter: "0.001"}, nil
+		}
+		return Response{Status: 200, JSON: wire.Object{"success": true}}, nil
 	}))
 	defer b.Close()
 	b.minimumAccessCooldown = time.Millisecond
-	r, e := b.Call(context.Background(), domain.Account{UserID: 1}, "POST", SubmitPath, nil)
-	if e != nil || calls.Load() != 6 || r.Status != 403 || r.AccessRetries != 5 {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	r, e := b.Call(ctx, domain.Account{UserID: 1}, "POST", SubmitPath, nil)
+	if e != nil || calls.Load() != 8 || r.Status != 200 {
 		t.Fatalf("response=%+v error=%v calls=%d", r, e, calls.Load())
-	}
-	_, e = r.Data()
-	if fault.Code(e) != "ACCESS_DENIED" || !strings.Contains(e.Error(), "已冷却重试 5 次") {
-		t.Fatal(e)
 	}
 }
 
@@ -198,5 +198,28 @@ func TestAccessCooldownServerDelayFormats(t *testing.T) {
 	}
 	if got := Cooldown(Response{Status: 403}, now); !got.Equal(now) {
 		t.Fatalf("client invented a fixed delay: %s", got.Sub(now))
+	}
+}
+
+func TestAccessBackoffGrowsCapsAndPreservesLongerServerHint(t *testing.T) {
+	b := NewBroker(credentials{}, transportFunc(func(context.Context, string, string, any, string) (Response, error) {
+		return Response{Status: 200}, nil
+	}))
+	defer b.Close()
+	for attempt, want := range []time.Duration{time.Minute, 2 * time.Minute, 4 * time.Minute, 8 * time.Minute, 16 * time.Minute, 30 * time.Minute, 30 * time.Minute} {
+		start := time.Now()
+		b.extendAccessCooldown(1, attempt)
+		got := time.UnixMilli(*b.State(1).ReadyAt).Sub(start)
+		if got < want-time.Second || got > want+time.Second {
+			t.Fatalf("attempt=%d wait=%s want=%s", attempt, got, want)
+		}
+	}
+	hint := time.Now().Add(time.Hour)
+	b.mu.Lock()
+	b.accessCooldowns[1] = hint
+	b.mu.Unlock()
+	b.extendAccessCooldown(1, 1000)
+	if *b.State(1).ReadyAt != hint.UnixMilli() {
+		t.Fatal("shortened the server cooldown")
 	}
 }

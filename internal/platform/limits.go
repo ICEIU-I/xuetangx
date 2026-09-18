@@ -13,7 +13,7 @@ var limitedWords = regexp.MustCompile(`(?i)throttl|too many requests|请求过�
 var secondsPattern = regexp.MustCompile(`(?i)([0-9]+(?:\.[0-9]+)?)\s*(?:seconds?|秒)`)
 
 func RateLimited(r Response) bool {
-	// A 403 has its own bounded retry policy, even if its body also mentions throttling.
+	// A 403 has its own access-cooldown retry policy, even if its body also mentions throttling.
 	if r.Status == 403 {
 		return false
 	}
@@ -35,8 +35,9 @@ func Cooldown(r Response, now time.Time) time.Time {
 			return now.Add(time.Duration(n * float64(time.Second)))
 		}
 	}
-	// Do not invent a fixed client-side wait when the platform does not provide
-	// one. Callers still keep their bounded retry budgets, while an explicit
-	// Retry-After or response message remains authoritative.
+	// Do not invent a fixed delay here when the platform does not provide one.
+	// The broker still applies its account-level minimum access cooldown before
+	// each 403 retry, while an explicit Retry-After or response message remains
+	// authoritative for the actual server wait.
 	return now
 }

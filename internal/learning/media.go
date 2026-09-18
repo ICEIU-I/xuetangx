@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"xuetangx/internal/domain"
 	"xuetangx/internal/fault"
+	"xuetangx/internal/platform"
 	"xuetangx/internal/platform/wire"
 )
 
@@ -32,7 +33,7 @@ func (r *Runner) media(ctx context.Context, in Input) (Result, error) {
 	var failures atomic.Int32
 	total := len(in.Units)
 	r.emit(total, nil, "开始处理课程单元")
-	e := pool(ctx, in.Concurrency, total, func(i int) error {
+	e := pool(ctx, in.Concurrency, total, func(ctx context.Context, i int) error {
 		u := in.Units[i]
 		item := domain.Item{UnitID: u.ID, Title: u.Title}
 		var err error
@@ -41,13 +42,27 @@ func (r *Runner) media(ctx context.Context, in Input) (Result, error) {
 		} else if u.Locked {
 			err = fault.New("LOCKED", "学习单元尚未开放")
 		} else {
-			switch in.Kind {
-			case "video":
-				item.Status, err = r.video(ctx, in, u)
-			case "article":
-				item.Status, err = r.article(ctx, in, u)
-			case "discussion":
-				item.Status, err = r.discussion(ctx, in, u)
+			item.Status = "retrying"
+			r.emit(total, &item, u.Title+"：正在核对完成状态")
+			attempt := 0
+			for {
+				switch in.Kind {
+				case "video":
+					item.Status, err = r.video(ctx, in, u)
+				case "article":
+					item.Status, err = r.article(ctx, in, u)
+				case "discussion":
+					item.Status, err = r.discussion(ctx, in, u)
+				}
+				if fault.Code(err) != "UNCONFIRMED" {
+					break
+				}
+				item.Status, item.Error = "retrying", ""
+				r.emit(total, &item, u.Title+"：平台尚未确认完成，退避后自动回查")
+				if err = r.Wait(ctx, platform.Backoff(attempt)); err != nil {
+					return err
+				}
+				attempt = min(attempt+1, 7)
 			}
 		}
 		if err != nil {

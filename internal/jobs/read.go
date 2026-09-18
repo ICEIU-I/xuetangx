@@ -75,6 +75,8 @@ func (r *Repository) Get(ctx context.Context, owner, id string) (domain.Job, err
 			m.Completed++
 		case "skipped":
 			m.Skipped++
+		case "retrying":
+			m.Processed--
 		case "wrong_existing":
 			m.Skipped++
 			m.WrongExisting++

@@ -217,9 +217,10 @@ func (s *Service) submit(ctx context.Context, a domain.Account, c domain.Course,
 			if e = s.Journal.Save(ctx, &r, "rejected", r.Retries, true, nil); e != nil {
 				return nil, e
 			}
-			rates++
-			if rates >= 4 {
-				return nil, fault.New("RATE_LIMITED", "多次达到服务端限流，请稍后继续")
+			delay := max(time.Until(platform.Cooldown(response, time.Now())), platform.Backoff(rates))
+			rates = min(rates+1, 7)
+			if e = s.Wait(ctx, delay); e != nil {
+				return nil, e
 			}
 			continue
 		}

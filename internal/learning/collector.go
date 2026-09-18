@@ -14,7 +14,7 @@ func (r *Runner) collect(ctx context.Context, in Input) (Result, error) {
 		total += len(ex.Problems)
 	}
 	var failed atomic.Int32
-	e := pool(ctx, in.Concurrency, len(in.Exercises), func(i int) error {
+	e := pool(ctx, in.Concurrency, len(in.Exercises), func(ctx context.Context, i int) error {
 		ex := in.Exercises[i]
 		if ex.Error != "" {
 			failed.Add(1)

@@ -22,11 +22,10 @@ const Origin = "https://www.xuetangx.com"
 const SubmitPath = "/api/v1/lms/exercise/problem_apply/"
 
 type Response struct {
-	Status        int             `json:"status"`
-	JSON          wire.Object     `json:"json"`
-	RetryAfter    string          `json:"retryAfter"`
-	AccessRetries int             `json:"accessRetries,omitempty"`
-	Raw           json.RawMessage `json:"raw,omitempty"`
+	Status     int             `json:"status"`
+	JSON       wire.Object     `json:"json"`
+	RetryAfter string          `json:"retryAfter"`
+	Raw        json.RawMessage `json:"raw,omitempty"`
 }
 type TransportError struct {
 	Connected, Transient bool
@@ -72,7 +71,7 @@ func ReadOnly(method, path string) bool {
 	if method != "GET" {
 		return false
 	}
-	for _, prefix := range []string{"/api/v1/lms/product/get_product_basic_info/", "/api/v1/lms/product/classroom/", "/api/v1/lms/product/sku_pay_detail/", "/api/v1/u/user/basic_profile/", "/api/v1/lms/user/user-courses/", "/api/v1/lms/learn/leaf_info/", "/api/v1/lms/learn/course/", "/api/v1/lms/exercise/get_exercise_list/", "/api/v1/lms/service/playurl/", "/video-log/get_video_watch_progress/"} {
+	for _, prefix := range []string{"/api/v1/lms/product/get_product_basic_info/", "/api/v1/lms/product/classroom/", "/api/v1/lms/product/sku_pay_detail/", "/api/v1/u/user/basic_profile/", "/api/v1/lms/user/user-courses/", "/api/v1/lms/learn/leaf_info/", "/api/v1/lms/learn/course/", "/api/v1/lms/exercise/get_exercise_list/", "/api/v1/lms/service/playurl/", "/api/v1/lms/forum/unit/discussion/", "/video-log/get_video_watch_progress/"} {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
@@ -148,9 +147,6 @@ func (r Response) Data() (wire.Object, error) {
 		return nil, fault.New("ACCOUNT_REQUIRED", "平台登录已失效")
 	}
 	if r.Status == 403 {
-		if r.AccessRetries > 0 {
-			return nil, fault.New("ACCESS_DENIED", fmt.Sprintf("平台持续拒绝访问（HTTP 403），已冷却重试 %d 次；请稍后重试未完成项", r.AccessRetries))
-		}
 		return nil, fault.New("ACCESS_DENIED", "平台拒绝访问（HTTP 403）")
 	}
 	if RateLimited(r) {

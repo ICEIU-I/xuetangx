@@ -84,7 +84,7 @@ func (r *Runner) verify(ctx context.Context, check func() (bool, error)) error {
 	}
 	return fault.New("UNCONFIRMED", "后端尚未确认完成")
 }
-func pool(ctx context.Context, n, count int, fn func(int) error) error {
+func pool(ctx context.Context, n, count int, fn func(context.Context, int) error) error {
 	child, cancel := context.WithCancel(ctx)
 	defer cancel()
 	jobs := make(chan int)
@@ -103,7 +103,7 @@ func pool(ctx context.Context, n, count int, fn func(int) error) error {
 					if !ok {
 						return
 					}
-					if e := fn(i); e != nil {
+					if e := fn(child, i); e != nil {
 						mu.Lock()
 						if first == nil {
 							first = e
