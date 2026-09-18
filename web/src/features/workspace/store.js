@@ -1,10 +1,13 @@
 import { observable } from '../../shared/observable.js';
 import { api, subscribeEvents } from '../../api.js';
+import { createCourseScore, emptyScore } from '../course-score/store.js';
 import { latestJob, primaryId } from './presentation.js';
 
 export function createWorkspace({ client = api, subscribe = subscribeEvents, storage = globalThis.sessionStorage, owner = '', pollMs = 5000 } = {}) {
-  const changes = observable({ session: { connected: false, user: null }, jobs: [], courses: [], rateLimits: {}, collectorLimits: {}, sharedCollectors: 0, loading: true, error: '', syncError: '', stream: 'connecting', starting: false, pendingStart: null, actionId: '', detailId: '' });
+  const changes = observable({ session: { connected: false, user: null }, jobs: [], courses: [], score: emptyScore(), rateLimits: {}, collectorLimits: {}, sharedCollectors: 0, loading: true, error: '', syncError: '', stream: 'connecting', starting: false, pendingStart: null, actionId: '', detailId: '' });
   const state = changes.state;
+  const scores = createCourseScore({ state, client });
+  const loadScore = scores.load;
   const currentJob = { get value() { return latestJob(state.jobs, state.session, state.courses[0]); } };
   let closed = false, epoch = 0, refreshId = 0, stream, timer, refreshing;
   const storageKey = `iceiu:pending-start:${owner}`;
@@ -18,18 +21,21 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     const old = state.jobs.find(j => j.id === job.id);
     if (old && (old.revision || 0) > (job.revision || 0)) return;
     state.jobs = [...state.jobs.filter(j => j.id !== job.id), job].sort((a, b) => b.createdAt - a.createdAt);
+    if (old && old.status !== 'done' && job.status === 'done' && currentJob.value?.id === job.id) void loadScore(true);
   }
   function setSession(session) {
     if (closed) return;
-    if (primaryId(session) !== primaryId(state.session) || session.connected !== state.session.connected) {
+    if (primaryId(session) !== primaryId(state.session) || session.connected !== state.session.connected || session.connectedAt !== state.session.connectedAt) {
       epoch++;
       state.jobs = [];
       state.rateLimits = {};
       state.collectorLimits = {};
+      scores.reset();
       state.error = '';
       if (state.pendingStart && primaryId(session) && Number(state.pendingStart.primaryId) !== primaryId(session)) savePending(null);
     }
     state.session = session;
+    if (session.connected && state.courses.length && state.score.primaryId !== primaryId(session)) void loadScore();
   }
   function recoverPending() {
     const pending = state.pendingStart;
@@ -81,6 +87,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
       setSession(session);
       state.courses = courses.courses || [];
       await refresh();
+      if (state.session.connected) void loadScore();
       // A user's current platform account may have records beyond the first page.
       if (!currentJob.value && primaryId(state.session)) {
         const identity = epoch;
@@ -105,7 +112,14 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
   }
   async function connected(account) {
     setSession(account);
+    try {
+      const result = await client.workflowCourses();
+      if (!closed && result.courses?.length) state.courses = result.courses;
+    } catch (error) {
+      if (!closed) state.syncError = error.message || '课程信息暂时无法更新。';
+    }
     await refresh();
+    void loadScore();
   }
   async function disconnect() {
     await client.disconnect();
@@ -149,6 +163,6 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     catch (e) { state.error = e.message; throw e; }
     finally { state.actionId = ''; }
   }
-  function dispose() { closed = true; epoch++; refreshId++; stream?.close(); clearInterval(timer); changes.clear(); }
-  return { state, currentJob, subscribe: changes.subscribe, initialize, refresh, getJob, setSession, connected, disconnect, start, checkStart, control, mergeJob, dispose };
+  function dispose() { closed = true; epoch++; refreshId++; scores.dispose(); stream?.close(); clearInterval(timer); changes.clear(); }
+  return { state, currentJob, subscribe: changes.subscribe, initialize, refresh, loadScore, getJob, setSession, connected, disconnect, start, checkStart, control, mergeJob, dispose };
 }

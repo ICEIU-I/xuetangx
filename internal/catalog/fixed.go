@@ -6,7 +6,7 @@ import "xuetangx/internal/domain"
 // The classroom is the 2026 autumn offering already present in this project's
 // answer bank.
 const (
-	FixedCourseTitle       = "大学物理2"
+	FixedCourseTitle       = "大学物理（2）(2026秋)"
 	FixedCourseSign        = "ncepu0702bt1359"
 	FixedCourseClassroomID = int64(31384299)
 )

@@ -7,7 +7,7 @@ import (
 
 func TestFixedCourseMatchesAnswerBankCourse(t *testing.T) {
 	c := catalog.FixedCourse()
-	if c.Title != "大学物理2" || c.ClassroomID != 31384299 || c.Sign != "ncepu0702bt1359" || c.CourseSign != c.Sign {
+	if c.Title != "大学物理（2）(2026秋)" || c.ClassroomID != 31384299 || c.Sign != "ncepu0702bt1359" || c.CourseSign != c.Sign {
 		t.Fatalf("unexpected fixed course: %+v", c)
 	}
 	if !catalog.IsFixedCourse(c) {
