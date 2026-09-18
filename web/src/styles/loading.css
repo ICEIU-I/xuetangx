@@ -1,0 +1,7 @@
+/* Activity indicators only: never imply a known completion percentage. */
+.loading-state{position:relative;display:grid;justify-items:center;gap:14px;padding:36px;text-align:center;color:var(--muted)}
+.loading-state::before{content:"";display:block;width:min(220px,80%);height:14px;border:var(--line);background:repeating-linear-gradient(90deg,var(--red) 0 22px,transparent 22px 30px);box-shadow:3px 3px 0 var(--ink);animation:pixel-loading 1.15s steps(4,end) infinite}
+.pixel-loader{display:grid;justify-items:center;gap:10px;margin:12px 0;color:var(--muted);font-size:12px}
+.pixel-loader::before{content:"";display:block;width:132px;height:10px;border:var(--line);background:repeating-linear-gradient(90deg,var(--blue) 0 16px,transparent 16px 22px);box-shadow:2px 2px 0 var(--ink);animation:pixel-loading 1.15s steps(4,end) infinite}
+@keyframes pixel-loading{0%{background-position:0 0}100%{background-position:88px 0}}
+@media(prefers-reduced-motion:reduce){.loading-state::before,.pixel-loader::before{animation:none;background:var(--blue)}}
