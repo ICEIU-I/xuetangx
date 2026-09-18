@@ -2,6 +2,7 @@ package bank
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"xuetangx/internal/domain"
@@ -17,13 +18,17 @@ type CourseBank struct {
 	UpdatedAt       time.Time     `json:"updatedAt"`
 }
 
-func (s *Service) Courses(ctx context.Context, limit, offset int) ([]CourseBank, int, error) {
+func (s *Service) Courses(ctx context.Context, limit, offset int, queries ...string) ([]CourseBank, int, error) {
 	limit = max(1, min(limit, 100))
 	offset = max(0, offset)
+	query := ""
+	if len(queries) > 0 {
+		query = strings.TrimSpace(queries[0])
+	}
 	var total int
 	if err := s.DB.Pool.QueryRow(ctx, `SELECT count(DISTINCT u.course_id)
-		FROM course_units u JOIN exercises e ON e.unit_id=u.id
-		JOIN question_versions q ON q.exercise_id=e.id JOIN standard_answers a ON a.question_id=q.id`).Scan(&total); err != nil {
+		FROM courses c JOIN course_units u ON u.course_id=c.id JOIN exercises e ON e.unit_id=u.id
+		JOIN question_versions q ON q.exercise_id=e.id JOIN standard_answers a ON a.question_id=q.id WHERE strpos(lower(c.title),lower($1))>0 OR strpos(c.classroom_id::text,$1)>0`, query).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	// Match Export's stored question/answer records, including missing answers.
@@ -32,7 +37,8 @@ func (s *Service) Courses(ctx context.Context, limit, offset int) ([]CourseBank,
 		FROM courses c JOIN course_units u ON u.course_id=c.id
 		JOIN exercises e ON e.unit_id=u.id JOIN question_versions q ON q.exercise_id=e.id
 		JOIN standard_answers a ON a.question_id=q.id
-		GROUP BY c.id ORDER BY max(a.updated_at) DESC,c.classroom_id LIMIT $1 OFFSET $2`, limit, offset)
+		WHERE strpos(lower(c.title),lower($3))>0 OR strpos(c.classroom_id::text,$3)>0
+ GROUP BY c.id ORDER BY max(a.updated_at) DESC,c.classroom_id LIMIT $1 OFFSET $2`, limit, offset, query)
 	if err != nil {
 		return nil, 0, err
 	}

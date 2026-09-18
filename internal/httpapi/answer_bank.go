@@ -16,8 +16,13 @@ func (s *Server) answerBankRoutes(m *http.ServeMux) {
 }
 
 func (s *Server) answerBankCourses(w http.ResponseWriter, r *http.Request) {
+	q, err := searchQuery(r)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
 	limit, offset := page(r)
-	courses, total, err := s.Engine.Bank.Courses(r.Context(), limit, offset)
+	courses, total, err := s.Engine.Bank.Courses(r.Context(), limit, offset, q)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -46,7 +51,17 @@ func (s *Server) answerBank(w http.ResponseWriter, r *http.Request) {
 		limit = 10000
 		offset = 0
 	}
-	out, e := s.Engine.Bank.Export(r.Context(), c, limit, offset)
+	q, e := searchQuery(r)
+	if e != nil {
+		writeError(w, e)
+		return
+	}
+	var out map[string]any
+	if r.URL.Query().Get("download") == "1" {
+		out, e = s.Engine.Bank.Export(r.Context(), c, limit, offset)
+	} else {
+		out, e = s.Engine.Bank.SearchQuestions(r.Context(), c, limit, offset, q)
+	}
 	if e != nil {
 		writeError(w, e)
 		return

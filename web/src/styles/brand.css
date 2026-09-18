@@ -1,0 +1,7 @@
+.pixel-brand{--pixel-size:4px;position:relative;display:inline-block;width:calc(var(--pixel-size)*22);height:calc(var(--pixel-size)*7);flex:none;vertical-align:middle}
+.pixel-brand-letters{width:calc(var(--pixel-size)*19);height:100%;filter:drop-shadow(2px 2px 0 var(--ink));animation:pixel-type 5.4s steps(3,end) -2s infinite}
+.brand-letter-0{fill:#ef5858}.brand-letter-1{fill:#409bd3}.brand-letter-2{fill:#e8ac20}
+.pixel-brand-cursor{position:absolute;right:0;bottom:0;width:var(--pixel-size);height:var(--pixel-size);background:var(--ink);animation:pixel-blink 1s steps(1,end) infinite}
+@keyframes pixel-type{0%,8%{clip-path:inset(0 100% 0 0)}30%,92%,100%{clip-path:inset(0 -3px -3px 0)}}
+@keyframes pixel-blink{50%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.pixel-brand-letters,.pixel-brand-cursor{animation:none}}

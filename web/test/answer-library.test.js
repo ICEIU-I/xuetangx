@@ -1,15 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { courseCards, pager, answerText, downloadURL } from '../src/admin/answer-library-view.js';
+import { courseRows, pager, answerText, downloadURL } from '../src/admin/answer-library-view.js';
 
 test('answer bank lists named courses with view and JSON links, no classroom input', () => {
-  const html = courseCards([{course:{title:'大学物理 <2>',classroomId:12},totalExercises:5,totalQuestions:72,capturedAnswers:70,missingAnswers:2,updatedAt:1}]);
+  const html = courseRows([{course:{title:'大学物理 <2>',classroomId:12},totalExercises:5,totalQuestions:72,capturedAnswers:70,missingAnswers:2,updatedAt:1}]);
   assert.match(html, /大学物理 &lt;2&gt;/);
   assert.match(html, /70/);
   assert.match(html, /href="\/admin\/answers\?course=12"/);
   assert.match(html, /href="\/api\/answer-bank\/12\?download=1"/);
   assert.doesNotMatch(html, /<input/);
-  assert.match(courseCards([]), /暂无课程题库/);
+  assert.match(html, /answer-bank-row/);
+  assert.doesNotMatch(html, /answer-bank-grid/);
+  assert.match(courseRows([]), /暂无课程题库/);
   assert.equal(downloadURL('12&x=1'), '/api/answer-bank/12%26x%3D1?download=1');
 });
 test('answer bank pagination exposes every page and guards boundaries', () => {

@@ -43,6 +43,14 @@ func TestCourseBankOverviewAndPagination(t *testing.T) {
 	if item.Course.ClassroomID != 12 || item.Course.Title != "Course" || item.TotalExercises != 1 || item.TotalQuestions != 3 || item.CapturedAnswers != 1 || item.MissingAnswers != 2 || item.UpdatedAt.IsZero() {
 		t.Fatalf("wrong overview: %+v", item)
 	}
+	list, total, err = b.Courses(ctx, 20, 0, "course")
+	if err != nil || total != 1 || len(list) != 1 {
+		t.Fatalf("course search: %v %d %v", list, total, err)
+	}
+	list, total, err = b.Courses(ctx, 20, 0, "does-not-exist")
+	if err != nil || total != 0 || len(list) != 0 {
+		t.Fatalf("empty course search: %v %d %v", list, total, err)
+	}
 	list, total, err = b.Courses(ctx, 1, 1)
 	if err != nil || total != 1 || len(list) != 0 {
 		t.Fatalf("pagination: %v %d %v", list, total, err)

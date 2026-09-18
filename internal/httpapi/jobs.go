@@ -9,8 +9,13 @@ import (
 
 func (s *Server) jobRoutes(m *http.ServeMux) {
 	m.Handle("GET /api/workflow/state", s.require(func(w http.ResponseWriter, r *http.Request) {
+		q, err := searchQuery(r)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 		limit, offset := page(r)
-		state, e := s.snapshot(r.Context(), principal(r).User.ID, limit, offset)
+		state, e := s.snapshot(r.Context(), principal(r).User.ID, limit, offset, q)
 		if e != nil {
 			writeError(w, e)
 			return
@@ -60,7 +65,7 @@ func (s *Server) jobRoutes(m *http.ServeMux) {
 		writeJSON(w, 200, map[string]any{"ok": true, "job": j})
 	}))
 }
-func (s *Server) snapshot(ctx context.Context, owner string, limit, offset int) (map[string]any, error) {
+func (s *Server) snapshot(ctx context.Context, owner string, limit, offset int, queries ...string) (map[string]any, error) {
 	accounts := map[string]any{}
 	limits := map[string]any{}
 	for _, role := range []string{"primary", "test"} {
@@ -74,7 +79,7 @@ func (s *Server) snapshot(ctx context.Context, owner string, limit, offset int) 
 			limits[role] = s.Engine.Broker.State(a.UserID)
 		}
 	}
-	list, total, e := s.Jobs.List(ctx, owner, limit, offset)
+	list, total, e := s.Jobs.List(ctx, owner, limit, offset, queries...)
 	if e != nil {
 		return nil, e
 	}

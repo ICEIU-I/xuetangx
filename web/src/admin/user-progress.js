@@ -1,7 +1,8 @@
 import { request } from '../api.js';
 import { modules, finished, percent, summary, statusNames, formatDate } from '../features/workspace/presentation.js';
 import { escape as e, disabled, feedback, render, delegate, lifetime } from '../shared/dom.js';
-import { navigate } from '../router.js';
+import { listSearch } from '../shared/list-search.js';
+import { pager } from './answer-library-view.js';
 
 function jobMarkup(job) {
   const stats = summary(job);
@@ -10,13 +11,23 @@ function jobMarkup(job) {
 }
 
 export function mountUserProgress(host, userId) {
-  const life = lifetime(); let data = null, selected = '', busy = false, error = '';
+  const life = lifetime(); let data = null, selected = '', busy = false, error = '', offset = 0;
+  const search = listSearch(host, life, 'admin-task-search', '搜索课程名称、账号或任务编号', () => load(0), () => busy);
   function draw() {
     if (!life.alive) return;
     const jobs = data?.jobs || [], job = jobs.find(item => item.id === selected) || jobs[0];
-    render(host, `<header class="page-heading"><div><a class="back-link" data-route href="/admin/users">← 用户管理</a><h1>${e(data?.email ? `${data.email} · 任务进度` : '用户任务进度')}</h1></div><button id="admin-user-refresh"${disabled(busy)}>刷新</button></header>${feedback(error)}${busy && !data ? '<div class="surface loading-state">正在读取任务进度…</div>' : !jobs.length ? '<section class="surface empty-state">该用户暂无任务记录。</section>' : `<div class="admin-job-tabs">${jobs.map(item => `<button data-job="${e(item.id)}" class="${item.id === (job?.id || '') ? 'selected' : ''}">${e(item.course.title)} · ${e(statusNames[item.status] || item.status)}</button>`).join('')}</div>${jobMarkup(job)}`}`);
+    render(host, `<header class="page-heading"><div><a class="back-link" data-route href="/admin/users">← 用户管理</a><h1>${e(data?.email ? `${data.email} · 任务进度` : '用户任务进度')}</h1></div><button id="admin-user-refresh"${disabled(busy)}>刷新</button></header>${search.markup()}${feedback(error)}${busy && !data ? '<div class="surface loading-state">正在读取任务进度…</div>' : !jobs.length ? '<section class="surface empty-state">没有匹配的任务记录。</section>' : `<div class="admin-job-tabs">${jobs.map(item => `<button data-job="${e(item.id)}" class="${item.id === (job?.id || '') ? 'selected' : ''}">${e(item.course.title)} · ${e(statusNames[item.status] || item.status)}</button>`).join('')}</div>${pager(offset,20,data.total,busy,'data-task-page')}${jobMarkup(job)}`}`);
   }
-  async function load() { busy = true; error = ''; draw(); try { data = await request(`/api/admin/users/${encodeURIComponent(userId)}/jobs?limit=50`); selected = selected || data.jobs?.[0]?.id || ''; } catch (err) { error = err.message || '任务读取失败'; } finally { busy = false; draw(); } }
+  async function load(next = offset) {
+    if (busy) return; busy = true; error = ''; draw();
+    try {
+      const result = await request(`/api/admin/users/${encodeURIComponent(userId)}/jobs?limit=20&offset=${next}&q=${encodeURIComponent(search.query)}`);
+      if (!life.alive) return;
+      data = result; offset = next;
+      if (!data.jobs?.some(j => j.id === selected)) selected = data.jobs?.[0]?.id || '';
+    } catch (err) { error = err.message || '任务读取失败'; } finally { busy = false; draw(); }
+  }
+  life.add(delegate(host, 'click', '[data-task-page]', (_, el) => void load(Number(el.dataset.taskPage))));
   life.add(delegate(host, 'click', '#admin-user-refresh', () => void load()));
   life.add(delegate(host, 'click', '[data-job]', (_, el) => { selected = el.dataset.job; draw(); }));
   load(); return life.dispose;

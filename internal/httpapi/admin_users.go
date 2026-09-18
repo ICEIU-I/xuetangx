@@ -2,16 +2,14 @@ package httpapi
 
 import (
 	"net/http"
-	"strings"
 	"xuetangx/internal/admin"
-	"xuetangx/internal/fault"
 )
 
 func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	limit, offset := page(r)
-	search := strings.TrimSpace(r.URL.Query().Get("q"))
-	if len(search) > 200 {
-		writeError(w, fault.New("INVALID_INPUT", "搜索内容过长"))
+	search, err := searchQuery(r)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
 	list, total, e := (admin.Service{DB: s.Auth.DB}).Users(r.Context(), search, limit, offset)
@@ -27,8 +25,13 @@ func (s *Server) adminUserRoutes(m *http.ServeMux) {
 			http.NotFound(w, r)
 			return
 		}
+		q, err := searchQuery(r)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
 		limit, offset := page(r)
-		jobs, total, e := s.Jobs.List(r.Context(), r.PathValue("id"), limit, offset)
+		jobs, total, e := s.Jobs.List(r.Context(), r.PathValue("id"), limit, offset, q)
 		if e != nil {
 			writeError(w, e)
 			return

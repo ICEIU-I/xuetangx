@@ -13,7 +13,7 @@ export async function request(url, opts = {}) {
 const j = request;
 export const api = {
   session: () => j('/api/session'),
-  workflowState: (offset = 0, limit = 25) => j(`/api/workflow/state?offset=${offset}&limit=${limit}`),
+  workflowState: (offset = 0, limit = 25, query = '') => j(`/api/workflow/state?offset=${offset}&limit=${limit}&q=${encodeURIComponent(query)}`),
   workflowJob: id => j(`/api/workflow/${encodeURIComponent(id)}`),
   workflowCourses: () => j('/api/workflow/courses'),
   workflowCourseScore: signal => j('/api/workflow/course-score', { signal }),

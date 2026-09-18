@@ -124,14 +124,19 @@ func (r *Repository) Get(ctx context.Context, owner, id string) (domain.Job, err
 	}
 	return j, e
 }
-func (r *Repository) List(ctx context.Context, owner string, limit, offset int) ([]domain.Job, int, error) {
+func (r *Repository) List(ctx context.Context, owner string, limit, offset int, queries ...string) ([]domain.Job, int, error) {
 	limit = max(1, min(limit, 100))
 	offset = max(0, offset)
+	query := ""
+	if len(queries) > 0 {
+		query = queries[0]
+	}
+	from := ` FROM jobs j JOIN courses c ON c.id=j.course_id JOIN platform_accounts a ON a.id=j.account_id WHERE j.owner_id=$1 AND (strpos(lower(c.title),lower($2))>0 OR strpos(j.id::text,$2)>0 OR strpos(a.platform_user_id::text,$2)>0)`
 	var total int
-	if e := r.DB.Pool.QueryRow(ctx, "SELECT count(*) FROM jobs WHERE owner_id=$1", owner).Scan(&total); e != nil {
+	if e := r.DB.Pool.QueryRow(ctx, "SELECT count(*)"+from, owner, query).Scan(&total); e != nil {
 		return nil, 0, e
 	}
-	rows, e := r.DB.Pool.Query(ctx, "SELECT id FROM jobs WHERE owner_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3", owner, limit, offset)
+	rows, e := r.DB.Pool.Query(ctx, "SELECT j.id"+from+" ORDER BY j.created_at DESC,j.id LIMIT $3 OFFSET $4", owner, query, limit, offset)
 	if e != nil {
 		return nil, 0, e
 	}

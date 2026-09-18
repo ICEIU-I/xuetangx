@@ -67,27 +67,3 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, out)
 }
-func (s *Server) conflicts(w http.ResponseWriter, r *http.Request) {
-	limit, offset := page(r)
-	rows, e := s.Auth.DB.Pool.Query(r.Context(), `SELECT q.id,c.classroom_id,q.problem_id,q.body_html FROM standard_answers a JOIN question_versions q ON q.id=a.question_id JOIN exercises x ON x.id=q.exercise_id JOIN course_units u ON u.id=x.unit_id JOIN courses c ON c.id=u.course_id WHERE a.status='conflict' ORDER BY a.updated_at DESC LIMIT $1 OFFSET $2`, limit, offset)
-	if e != nil {
-		writeError(w, e)
-		return
-	}
-	defer rows.Close()
-	out := []any{}
-	for rows.Next() {
-		var id, body string
-		var class, problem int64
-		if e = rows.Scan(&id, &class, &problem, &body); e != nil {
-			writeError(w, e)
-			return
-		}
-		out = append(out, map[string]any{"id": id, "classroomId": class, "problemId": problem, "body": body})
-	}
-	if e = rows.Err(); e != nil {
-		writeError(w, e)
-		return
-	}
-	writeJSON(w, 200, map[string]any{"conflicts": out})
-}
