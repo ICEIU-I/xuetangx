@@ -67,7 +67,7 @@ func TestDurableRetryAndAcceptedTimeout(t *testing.T) {
 			restarted := operations.New(&operations.Journal{DB: s}, b, cat, call)
 			restarted.Wait = op.Wait
 			restarted.Delays = op.Delays
-			if _, e := restarted.Submit(ctx, a, c, ex, p, false); e != nil {
+			if _, e := restarted.Submit(ctx, anotherBinding(t, s, a), c, ex, p, false); e != nil {
 				t.Fatal(e)
 			}
 			if posts != want {
@@ -102,6 +102,7 @@ func TestMissingCountNeverRetriesAndBudgetSurvives(t *testing.T) {
 		t.Fatal(posts)
 	}
 	p.User = json.RawMessage(`{"my_count":0}`)
+	a = anotherBinding(t, s, a)
 	for i := 0; i < 2; i++ {
 		if _, e := op.Submit(ctx, a, c, ex, p, false); fault.Code(e) != "SUBMISSION_RETRY_EXHAUSTED" {
 			t.Fatal(e)

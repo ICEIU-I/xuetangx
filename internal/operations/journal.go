@@ -24,6 +24,13 @@ func (j *Journal) Load(ctx context.Context, key, kind string, a domain.Account, 
 	r := Record{Key: key}
 	var raw []byte
 	e := j.DB.Tx(ctx, func(tx pgx.Tx) error {
+		var bound bool
+		if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_accounts WHERE id=$1 AND owner_id=$2 AND platform_user_id=$3)`, a.ID, a.Owner, a.UserID).Scan(&bound); e != nil {
+			return e
+		}
+		if !bound {
+			return fault.New("ACCOUNT_REQUIRED", "平台账号归属无效")
+		}
 		var blocked bool
 		if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM migration_blocks WHERE classroom_id=$1 AND (owner_id=$2 OR owner_id IS NULL) AND resolved_at IS NULL)`, c.ClassroomID, a.Owner).Scan(&blocked); e != nil {
 			return e
@@ -34,7 +41,9 @@ func (j *Journal) Load(ctx context.Context, key, kind string, a domain.Account, 
 		if _, e := tx.Exec(ctx, `INSERT INTO operations(id,op_key,owner_id,account_id,classroom_id,leaf_id,problem_id,kind,fingerprint,state) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'new') ON CONFLICT(op_key) DO NOTHING`, uuid.NewString(), key, a.Owner, a.ID, c.ClassroomID, leaf, problem, kind, fingerprint); e != nil {
 			return e
 		}
-		return tx.QueryRow(ctx, `SELECT id,state,network_retries,attempt,retryable,result FROM operations WHERE op_key=$1 AND owner_id=$2 AND account_id=$3`, key, a.Owner, a.ID).Scan(&r.ID, &r.State, &r.Retries, &r.Attempt, &r.Retryable, &raw)
+		// The journal follows the real platform identity across private bindings.
+		// Keep the original audit owner; credentials, jobs and events remain private.
+		return tx.QueryRow(ctx, `SELECT o.id,o.state,o.network_retries,o.attempt,o.retryable,o.result FROM operations o JOIN platform_accounts a ON a.id=o.account_id WHERE o.op_key=$1 AND a.platform_user_id=$2`, key, a.UserID).Scan(&r.ID, &r.State, &r.Retries, &r.Attempt, &r.Retryable, &raw)
 	})
 	if e == nil {
 		r.Result, _ = wire.Decode(raw)
@@ -75,7 +84,7 @@ func (j *Journal) Save(ctx context.Context, r *Record, state string, retries int
 	return e
 }
 func (j *Journal) PreserveLegacy(ctx context.Context, r *Record, a domain.Account, c domain.Course, leaf, problem int64, hashes []string) error {
-	rows, e := j.DB.Pool.Query(ctx, `SELECT state,network_retries,retryable,result FROM operations WHERE account_id=$1 AND classroom_id=$2 AND leaf_id=$3 AND problem_id=$4 AND kind='question' AND id<>$5 AND (fingerprint=ANY($6) OR fingerprint='')`, a.ID, c.ClassroomID, leaf, problem, r.ID, hashes)
+	rows, e := j.DB.Pool.Query(ctx, `SELECT o.state,o.network_retries,o.retryable,o.result FROM operations o JOIN platform_accounts a ON a.id=o.account_id WHERE a.platform_user_id=$1 AND o.classroom_id=$2 AND o.leaf_id=$3 AND o.problem_id=$4 AND o.kind='question' AND o.id<>$5 AND (o.fingerprint=ANY($6) OR o.fingerprint='')`, a.UserID, c.ClassroomID, leaf, problem, r.ID, hashes)
 	if e != nil {
 		return e
 	}

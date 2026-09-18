@@ -55,17 +55,20 @@ func (s *Service) Connect(ctx context.Context, owner, role, cookie string) (doma
 		if _, e := tx.Exec(ctx, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", owner); e != nil {
 			return e
 		}
-		var existingOwner, existingRole string
-		var shared bool
-		e := tx.QueryRow(ctx, "SELECT id,owner_id,coalesce(role,''),shared_collector FROM platform_accounts WHERE platform_user_id=$1 FOR UPDATE", platformID).Scan(&accountID, &existingOwner, &existingRole, &shared)
-		if e != nil && e != pgx.ErrNoRows {
+		if e := lockPlatformIdentity(ctx, tx, platformID); e != nil {
 			return e
 		}
-		if e == nil && shared {
+		var shared bool
+		if e := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM platform_accounts WHERE platform_user_id=$1 AND shared_collector)", platformID).Scan(&shared); e != nil {
+			return e
+		}
+		if shared {
 			return fault.New("ACCOUNT_BOUND", "此账号已作为全站答案采集账号")
 		}
-		if e == nil && existingOwner != owner {
-			return fault.New("ACCOUNT_BOUND", "该平台账号已绑定其他系统用户")
+		var existingRole string
+		e := tx.QueryRow(ctx, "SELECT id,coalesce(role,'') FROM platform_accounts WHERE owner_id=$1 AND platform_user_id=$2 FOR UPDATE", owner, platformID).Scan(&accountID, &existingRole)
+		if e != nil && e != pgx.ErrNoRows {
+			return e
 		}
 		if e == nil && existingRole != "" && existingRole != role {
 			return fault.New("INVALID_INPUT", "正式与测试账号必须不同")

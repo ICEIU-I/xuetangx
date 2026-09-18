@@ -71,17 +71,20 @@ func (s *Service) SaveCollector(ctx context.Context, actor, id, label, cookie st
 	s.mu.Lock()
 	var accountID string
 	e = s.DB.Tx(ctx, func(tx pgx.Tx) error {
-		if _, e := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "shared-collectors"); e != nil {
+		if e := lockPlatformIdentity(ctx, tx, uid); e != nil {
 			return e
 		}
 		owner := actor
-		var shared bool
-		err := tx.QueryRow(ctx, `SELECT id,owner_id,shared_collector FROM platform_accounts WHERE platform_user_id=$1 FOR UPDATE`, uid).Scan(&accountID, &owner, &shared)
+		var private bool
+		if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_accounts WHERE platform_user_id=$1 AND NOT shared_collector)`, uid).Scan(&private); e != nil {
+			return e
+		}
+		if private {
+			return fault.New("ACCOUNT_BOUND", "该账号已绑定个人学习账号，请使用独立的答案采集账号")
+		}
+		err := tx.QueryRow(ctx, `SELECT id,owner_id FROM platform_accounts WHERE platform_user_id=$1 AND shared_collector FOR UPDATE`, uid).Scan(&accountID, &owner)
 		if err != nil && err != pgx.ErrNoRows {
 			return err
-		}
-		if err == nil && !shared {
-			return fault.New("ACCOUNT_BOUND", "该账号已绑定个人学习账号，请使用独立的答案采集账号")
 		}
 		if id != "" && accountID != id {
 			return fault.New("INVALID_INPUT", "新 Cookie 与原采集账号不一致，请作为新账号添加")

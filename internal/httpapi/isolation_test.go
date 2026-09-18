@@ -117,12 +117,21 @@ func TestHTTPIdentityCSRFAndEventIsolation(t *testing.T) {
 	if res.StatusCode != 200 {
 		t.Fatal("bearer rejected")
 	}
-	account, course, job := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	for _, identity := range []identity{one, two} {
+		res, raw = request("POST", "/api/cookie", `{"cookie":"csrftoken=csrf; sessionid=101"}`, identity.cookies, identity.csrf, "")
+		if res.StatusCode != 200 || !strings.Contains(raw, `"connected":true`) || strings.Contains(raw, "sessionid") {
+			t.Fatal("same platform account could not connect privately", res.StatusCode, raw)
+		}
+	}
+	bound, err := ac.Get(ctx, one.owner, "primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, course, job := bound.ID, uuid.NewString(), uuid.NewString()
 	queries := []struct {
 		sql  string
 		args []any
 	}{
-		{"INSERT INTO platform_accounts(id,owner_id,platform_user_id,role,valid) VALUES($1,$2,101,'primary',false)", []any{account, one.owner}},
 		{"INSERT INTO courses(id,classroom_id,sign,course_sign,title,url) VALUES($1,12,'s','c','Private course','https://www.xuetangx.com/learn/space/s/c/12')", []any{course}},
 		{"INSERT INTO jobs(id,owner_id,account_id,course_id,status,concurrency) VALUES($1,$2,$3,$4,'paused',3)", []any{job, one.owner, account, course}},
 		{"INSERT INTO job_events(owner_id,job_id,event_type,payload) VALUES($1,$2::uuid,'workflow',jsonb_build_object('jobId',$2::uuid::text))", []any{one.owner, job}},
@@ -213,6 +222,14 @@ func TestHTTPIdentityCSRFAndEventIsolation(t *testing.T) {
 	res, raw = request("GET", "/api/admin/jobs", "", one.cookies, "", "")
 	if res.StatusCode != 200 || !strings.Contains(raw, job) {
 		t.Fatal("admin job listing failed", raw)
+	}
+	res, raw = request("POST", "/api/disconnect", `{}`, one.cookies, one.csrf, "")
+	if res.StatusCode != 200 {
+		t.Fatal("disconnect failed", raw)
+	}
+	res, raw = request("GET", "/api/session", "", two.cookies, "", "")
+	if res.StatusCode != 200 || !strings.Contains(raw, `"connected":true`) {
+		t.Fatal("disconnect affected another user", raw)
 	}
 	res, raw = request("POST", "/api/admin/users/"+two.owner+"/disable", `{"disabled":true}`, one.cookies, one.csrf, "")
 	if res.StatusCode != 200 {
