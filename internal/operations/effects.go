@@ -50,9 +50,14 @@ func (s *Service) Effect(ctx context.Context, a domain.Account, c domain.Course,
 							return nil, e
 						}
 						attempt = min(attempt+1, 7)
-						continue
+						// The progress write is idempotent. If the platform omitted
+						// its completion field, retry the write after the backoff
+						// instead of waiting forever for a response that may never
+						// contain the field.
+						complete = false
+					} else {
+						return nil, err
 					}
-					return nil, err
 				}
 				if complete {
 					if err = s.Journal.Save(ctx, &r, "confirmed", r.Retries, false, nil); err != nil {

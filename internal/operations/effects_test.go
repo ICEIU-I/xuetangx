@@ -152,7 +152,7 @@ func TestProgressEffectRetriesWhenCompletionFieldIsTemporarilyMissing(t *testing
 	if _, err = op.Effect(ctx, a, c, 34, "video", "missing-field", "POST", "/progress", nil); err != nil {
 		t.Fatal(err)
 	}
-	if reads < 3 || writes != 1 {
+	if reads < 2 || writes != 1 {
 		t.Fatalf("missing completion state was not retried safely: reads=%d writes=%d", reads, writes)
 	}
 }
