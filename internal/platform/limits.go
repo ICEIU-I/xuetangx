@@ -35,5 +35,8 @@ func Cooldown(r Response, now time.Time) time.Time {
 			return now.Add(time.Duration(n * float64(time.Second)))
 		}
 	}
-	return now.Add(time.Minute)
+	// Do not invent a fixed client-side wait when the platform does not provide
+	// one. Callers still keep their bounded retry budgets, while an explicit
+	// Retry-After or response message remains authoritative.
+	return now
 }

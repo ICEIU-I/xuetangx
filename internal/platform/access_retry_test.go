@@ -65,7 +65,7 @@ func TestAccessCooldownBlocksWholeAccountButNotOthers(t *testing.T) {
 	b := NewBroker(credentials{}, transportFunc(func(_ context.Context, _, path string, _ any, _ string) (Response, error) {
 		calls.Add(1)
 		if path == "/denied" {
-			return Response{Status: 403}, nil
+			return Response{Status: 403, RetryAfter: "0.2"}, nil
 		}
 		return Response{Status: 200}, nil
 	}))
@@ -75,8 +75,8 @@ func TestAccessCooldownBlocksWholeAccountButNotOthers(t *testing.T) {
 		t.Fatal(e)
 	}
 	s := b.State(7)
-	if !s.Blocked || s.ReadyAt == nil || s.Reason != "access_denied" || s.Scope != "account" || *s.ReadyAt-time.Now().UnixMilli() < 59000 {
-		t.Fatalf("missing default 60s account cooldown: %+v", s)
+	if !s.Blocked || s.ReadyAt == nil || s.Reason != "access_denied" || s.Scope != "account" || *s.ReadyAt-time.Now().UnixMilli() < 150 {
+		t.Fatalf("missing server-provided account cooldown: %+v", s)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -97,6 +97,22 @@ func TestAccessCooldownBlocksWholeAccountButNotOthers(t *testing.T) {
 	}
 }
 
+func TestAccessRetryWithoutServerDelayDoesNotWaitFixedMinute(t *testing.T) {
+	var calls atomic.Int32
+	b := NewBroker(credentials{}, transportFunc(func(_ context.Context, _, _ string, _ any, _ string) (Response, error) {
+		if calls.Add(1) == 1 {
+			return Response{Status: 403}, nil
+		}
+		return Response{Status: 200}, nil
+	}))
+	defer b.Close()
+	start := time.Now()
+	r, err := b.Call(context.Background(), domain.Account{UserID: 1}, "GET", "/read", nil)
+	if err != nil || r.Status != 200 || calls.Load() != 2 || time.Since(start) >= time.Second {
+		t.Fatalf("missing server delay should not impose a fixed wait: response=%+v error=%v calls=%d elapsed=%s", r, err, calls.Load(), time.Since(start))
+	}
+}
+
 func TestAccessCooldownCancelAndCloseDoNotReplay(t *testing.T) {
 	for _, mode := range []string{"cancel", "close"} {
 		t.Run(mode, func(t *testing.T) {
@@ -105,7 +121,7 @@ func TestAccessCooldownCancelAndCloseDoNotReplay(t *testing.T) {
 			b := NewBroker(credentials{}, transportFunc(func(_ context.Context, _, _ string, _ any, _ string) (Response, error) {
 				calls.Add(1)
 				seen <- struct{}{}
-				return Response{Status: 403}, nil
+				return Response{Status: 403, RetryAfter: "1"}, nil
 			}))
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -175,5 +191,8 @@ func TestAccessCooldownServerDelayFormats(t *testing.T) {
 		if got := Cooldown(r, now); !got.Equal(now.Add(2 * time.Second)) {
 			t.Fatal("server delay ignored", got)
 		}
+	}
+	if got := Cooldown(Response{Status: 403}, now); !got.Equal(now) {
+		t.Fatalf("client invented a fixed delay: %s", got.Sub(now))
 	}
 }
