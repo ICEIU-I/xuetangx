@@ -64,13 +64,9 @@ func (e *Engine) prepare(ctx context.Context, owner, id string) {
 			return
 		}
 	}
-	for _, ex := range inv.Exercises {
-		for _, p := range ex.Problems {
-			if err = e.Bank.Observe(ctx, a, inv.Course, ex, p); err != nil {
-				e.blockQueued(ctx, job, err)
-				return
-			}
-		}
+	if err = e.Bank.ObserveBatch(ctx, a, inv.Course, inv.Exercises); err != nil {
+		e.blockQueued(ctx, job, err)
+		return
 	}
 	coverage, err := e.Bank.Coverage(ctx, inv)
 	if err != nil {
