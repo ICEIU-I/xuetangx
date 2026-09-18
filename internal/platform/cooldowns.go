@@ -51,7 +51,14 @@ func (b *Broker) recordCooldown(o outcome) {
 		if o.response.Status == 403 {
 			target = b.accessCooldowns
 		}
-		until := Cooldown(o.response, time.Now())
+		now := time.Now()
+		until := Cooldown(o.response, now)
+		if o.response.Status == 403 {
+			minimum := now.Add(b.minimumAccessCooldown)
+			if until.Before(minimum) {
+				until = minimum
+			}
+		}
 		if until.After(target[o.entry.account.UserID]) {
 			target[o.entry.account.UserID] = until
 		}

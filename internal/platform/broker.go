@@ -26,23 +26,24 @@ type outcome struct {
 	entry    *request
 }
 type Broker struct {
-	credentials     Credentials
-	transport       Transport
-	ctx             context.Context
-	cancel          context.CancelFunc
-	requests        chan *request
-	results         chan outcome
-	done            chan struct{}
-	mu              sync.Mutex
-	cooldowns       map[int64]time.Time
-	accessCooldowns map[int64]time.Time
-	OnLimit         func(domain.Account, LimitState)
-	Ready           func() bool
+	credentials           Credentials
+	transport             Transport
+	ctx                   context.Context
+	cancel                context.CancelFunc
+	requests              chan *request
+	results               chan outcome
+	done                  chan struct{}
+	mu                    sync.Mutex
+	cooldowns             map[int64]time.Time
+	accessCooldowns       map[int64]time.Time
+	minimumAccessCooldown time.Duration
+	OnLimit               func(domain.Account, LimitState)
+	Ready                 func() bool
 }
 
 func NewBroker(credentials Credentials, transport Transport) *Broker {
 	ctx, cancel := context.WithCancel(context.Background())
-	b := &Broker{credentials: credentials, transport: transport, ctx: ctx, cancel: cancel, requests: make(chan *request, 256), results: make(chan outcome, 64), done: make(chan struct{}), cooldowns: map[int64]time.Time{}, accessCooldowns: map[int64]time.Time{}}
+	b := &Broker{credentials: credentials, transport: transport, ctx: ctx, cancel: cancel, requests: make(chan *request, 256), results: make(chan outcome, 64), done: make(chan struct{}), cooldowns: map[int64]time.Time{}, accessCooldowns: map[int64]time.Time{}, minimumAccessCooldown: time.Minute}
 	go b.run()
 	return b
 }

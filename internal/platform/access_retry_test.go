@@ -29,6 +29,7 @@ func TestAccessRetryWaitsAndRecoversReadsAndWrites(t *testing.T) {
 				return Response{Status: 200, JSON: wire.Object{"success": true}}, nil
 			}))
 			defer b.Close()
+			b.minimumAccessCooldown = 30 * time.Millisecond
 			method := "POST"
 			if strings.Contains(path, "get_exercise_list") {
 				method = "GET"
@@ -50,6 +51,7 @@ func TestAccessRetryStopsAfterFiveRetries(t *testing.T) {
 		return Response{Status: 403, RetryAfter: "0.001"}, nil
 	}))
 	defer b.Close()
+	b.minimumAccessCooldown = time.Millisecond
 	r, e := b.Call(context.Background(), domain.Account{UserID: 1}, "POST", SubmitPath, nil)
 	if e != nil || calls.Load() != 6 || r.Status != 403 || r.AccessRetries != 5 {
 		t.Fatalf("response=%+v error=%v calls=%d", r, e, calls.Load())
@@ -70,13 +72,14 @@ func TestAccessCooldownBlocksWholeAccountButNotOthers(t *testing.T) {
 		return Response{Status: 200}, nil
 	}))
 	defer b.Close()
+	b.minimumAccessCooldown = 200 * time.Millisecond
 	a := domain.Account{UserID: 7, ID: "one", Owner: "owner1"}
 	if _, e := b.Request(context.Background(), a, "GET", "/denied", nil); e != nil {
 		t.Fatal(e)
 	}
 	s := b.State(7)
 	if !s.Blocked || s.ReadyAt == nil || s.Reason != "access_denied" || s.Scope != "account" || *s.ReadyAt-time.Now().UnixMilli() < 150 {
-		t.Fatalf("missing server-provided account cooldown: %+v", s)
+		t.Fatalf("missing minimum account cooldown: %+v", s)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -97,7 +100,7 @@ func TestAccessCooldownBlocksWholeAccountButNotOthers(t *testing.T) {
 	}
 }
 
-func TestAccessRetryWithoutServerDelayDoesNotWaitFixedMinute(t *testing.T) {
+func TestAccessRetryWithoutServerDelayUsesMinimumCooldown(t *testing.T) {
 	var calls atomic.Int32
 	b := NewBroker(credentials{}, transportFunc(func(_ context.Context, _, _ string, _ any, _ string) (Response, error) {
 		if calls.Add(1) == 1 {
@@ -106,10 +109,11 @@ func TestAccessRetryWithoutServerDelayDoesNotWaitFixedMinute(t *testing.T) {
 		return Response{Status: 200}, nil
 	}))
 	defer b.Close()
+	b.minimumAccessCooldown = 30 * time.Millisecond
 	start := time.Now()
 	r, err := b.Call(context.Background(), domain.Account{UserID: 1}, "GET", "/read", nil)
-	if err != nil || r.Status != 200 || calls.Load() != 2 || time.Since(start) >= time.Second {
-		t.Fatalf("missing server delay should not impose a fixed wait: response=%+v error=%v calls=%d elapsed=%s", r, err, calls.Load(), time.Since(start))
+	if err != nil || r.Status != 200 || calls.Load() != 2 || time.Since(start) < 30*time.Millisecond || time.Since(start) >= time.Second {
+		t.Fatalf("missing server delay ignored minimum cooldown: response=%+v error=%v calls=%d elapsed=%s", r, err, calls.Load(), time.Since(start))
 	}
 }
 
