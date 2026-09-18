@@ -4,7 +4,7 @@ import { modules, primaryId, activeStatuses, statusNames } from '../features/wor
 import { escape as e, feedback, disabled, render, delegate, lifetime } from '../shared/dom.js';
 import { mountSingleVideo } from './single-video.js';
 export function mountRunner(host, workspace, course, kind) {
-  const life = lifetime(); let concurrency = 3, submit = false, selected = [], scan, busy = false, error = '';
+  const life = lifetime(); let concurrency = 1, submit = false, selected = [], scan, busy = false, error = '';
   const title = modules.find(m => m.kind === kind)?.title || '答案采集';
   host.innerHTML = '<section class="surface"><div class="runner-content"></div><div class="single-content"></div></section>';
   const content = host.querySelector('.runner-content');

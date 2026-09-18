@@ -122,7 +122,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     } catch { state.error = '暂时无法核对任务，请恢复连接后重新检查。'; }
     finally { state.starting = false; }
   }
-  async function start(courseUrl, concurrency = 3, options = {}) {
+  async function start(courseUrl, concurrency = 1, options = {}) {
     if (state.starting || state.pendingStart) return;
     state.starting = true; state.error = '';
     const identity = epoch;

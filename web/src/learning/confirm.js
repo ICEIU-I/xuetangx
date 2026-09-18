@@ -1,7 +1,7 @@
 import { modules } from '../features/workspace/presentation.js';
 import { escape as e, disabled, feedback, render, delegate, lifetime } from '../shared/dom.js';
 export function mountConfirm(host, workspace) {
-  const life = lifetime(); let concurrency = 3;
+  const life = lifetime(); let concurrency = 1;
   const { state } = workspace;
   function draw() {
     if (!life.alive) return;

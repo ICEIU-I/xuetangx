@@ -21,7 +21,7 @@ var Kinds = map[string]bool{"video": true, "article": true, "discussion": true, 
 func (r *Repository) Create(ctx context.Context, a domain.Account, c domain.Course, input domain.Start) (string, error) {
 	id := uuid.NewString()
 	if input.Concurrency == 0 {
-		input.Concurrency = 3
+		input.Concurrency = 1
 	}
 	if input.Concurrency < 1 || input.Concurrency > 3 {
 		return "", fault.New("INVALID_INPUT", "并发数须为 1–3")
