@@ -16,6 +16,7 @@ func (s *Server) authRoutes(m *http.ServeMux) {
 	m.HandleFunc("POST /api/auth/verify", s.verify)
 	m.HandleFunc("POST /api/auth/resend", s.resend)
 	m.HandleFunc("POST /api/auth/forgot-password", s.forgot)
+	m.HandleFunc("POST /api/auth/verify-reset-code", s.verifyResetCode)
 	m.HandleFunc("POST /api/auth/reset-password", s.reset)
 	m.Handle("POST /api/auth/logout", s.require(s.logout))
 	m.Handle("POST /api/auth/change-password", s.require(s.changePassword))
@@ -126,11 +127,38 @@ func (s *Server) sendEmail(w http.ResponseWriter, r *http.Request, kind string) 
 	if !s.authLimit(w, r, kind+"-mail", v.Email) {
 		return
 	}
-	if e := s.Auth.RequestEmail(r.Context(), v.Email, kind); e != nil {
+	var e error
+	if kind == "reset" {
+		e = s.Auth.RequestResetCode(r.Context(), v.Email)
+	} else {
+		e = s.Auth.RequestEmail(r.Context(), v.Email, kind)
+	}
+	if e != nil {
 		writeError(w, e)
 		return
 	}
 	writeJSON(w, 202, map[string]bool{"ok": true})
+}
+
+func (s *Server) verifyResetCode(w http.ResponseWriter, r *http.Request) {
+	var v struct{ Email, Code, Password string }
+	if e := body(w, r, &v); e != nil {
+		writeError(w, e)
+		return
+	}
+	if !s.authLimit(w, r, "reset-code", v.Email) {
+		return
+	}
+	release, e := s.hashSlot(r.Context())
+	if e != nil {
+		return
+	}
+	defer release()
+	if e = s.Auth.ConsumeResetCode(r.Context(), v.Email, v.Code, v.Password); e != nil {
+		writeError(w, e)
+		return
+	}
+	writeJSON(w, 200, map[string]bool{"ok": true})
 }
 func (s *Server) emailUnavailable(w http.ResponseWriter) bool {
 	if !s.EmailDisabled {

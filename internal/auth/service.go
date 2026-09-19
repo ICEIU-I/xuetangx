@@ -2,8 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"math/big"
 	"net/mail"
 	"strings"
 	"time"
@@ -111,6 +114,93 @@ func (s *Service) RequestEmail(ctx context.Context, email, kind string) error {
 			return nil
 		}
 		return s.issue(ctx, tx, id, email, kind)
+	})
+}
+
+// RequestResetCode issues a short-lived, single-use numeric password-reset
+// code. The plaintext code is only placed in the encrypted mail outbox and is
+// never returned to the caller or written to logs.
+func (s *Service) RequestResetCode(ctx context.Context, email string) error {
+	email, e := Email(email)
+	if e != nil {
+		return e
+	}
+	codeNumber, e := rand.Int(rand.Reader, big.NewInt(1000000))
+	if e != nil {
+		return e
+	}
+	code := fmt.Sprintf("%06d", codeNumber.Int64())
+	return s.DB.Tx(ctx, func(tx pgx.Tx) error {
+		var id string
+		var disabled bool
+		e := tx.QueryRow(ctx, "SELECT id,disabled FROM users WHERE lower(email)=$1 FOR UPDATE", email).Scan(&id, &disabled)
+		if e == pgx.ErrNoRows {
+			return nil
+		}
+		if e != nil {
+			return e
+		}
+		if disabled {
+			return nil
+		}
+		if _, e = tx.Exec(ctx, "UPDATE auth_challenges SET used_at=now() WHERE user_id=$1 AND kind='reset' AND used_at IS NULL", id); e != nil {
+			return e
+		}
+		challengeID := uuid.NewString()
+		if _, e = tx.Exec(ctx, "INSERT INTO auth_challenges(id,user_id,kind,code_hash,expires_at) VALUES($1,$2,'reset',$3,$4)", challengeID, id, secure.Hash(code), time.Now().Add(10*time.Minute)); e != nil {
+			return e
+		}
+		body := "+----------------------+\n| CCF PASSWORD RESET   |\n|                      |\n| Your code: " + code + "     |\n| Expires in 10 minutes|\n|                      |\n| If you did not ask,  |\n| ignore this message. |\n+----------------------+\n"
+		return s.Mail.Enqueue(ctx, tx, email, "Your password reset code", body)
+	})
+}
+
+// ConsumeResetCode verifies and consumes a reset code, then changes the
+// password in the same transaction. Five incorrect attempts permanently
+// invalidate the challenge.
+func (s *Service) ConsumeResetCode(ctx context.Context, email, code, password string) error {
+	email, e := Email(email)
+	if e != nil || len(code) != 6 {
+		return fault.New("TOKEN_INVALID", "验证码无效或已过期")
+	}
+	for _, r := range code {
+		if r < '0' || r > '9' {
+			return fault.New("TOKEN_INVALID", "验证码无效或已过期")
+		}
+	}
+	hash, e := secure.Password(password)
+	if e != nil {
+		return fault.New("INVALID_INPUT", e.Error())
+	}
+	return s.DB.Tx(ctx, func(tx pgx.Tx) error {
+		var challengeID, userID, expected string
+		var attempts int
+		e := tx.QueryRow(ctx, `SELECT c.id,c.user_id,c.code_hash,c.attempts FROM auth_challenges c JOIN users u ON u.id=c.user_id WHERE lower(u.email)=$1 AND c.kind='reset' AND c.used_at IS NULL AND c.expires_at>now() AND NOT u.disabled ORDER BY c.created_at DESC LIMIT 1 FOR UPDATE`, email).Scan(&challengeID, &userID, &expected, &attempts)
+		if e == pgx.ErrNoRows {
+			return fault.New("TOKEN_INVALID", "验证码无效或已过期")
+		}
+		if e != nil {
+			return e
+		}
+		if expected != secure.Hash(code) {
+			attempts++
+			_, e = tx.Exec(ctx, "UPDATE auth_challenges SET attempts=$2,used_at=CASE WHEN $2>=5 THEN now() ELSE used_at END WHERE id=$1", challengeID, attempts)
+			if e != nil {
+				return e
+			}
+			return fault.New("TOKEN_INVALID", "验证码无效或已过期")
+		}
+		if _, e = tx.Exec(ctx, "UPDATE auth_challenges SET used_at=now() WHERE id=$1", challengeID); e != nil {
+			return e
+		}
+		if _, e = tx.Exec(ctx, "UPDATE users SET password_hash=$2 WHERE id=$1 AND NOT disabled", userID, hash); e != nil {
+			return e
+		}
+		if _, e = tx.Exec(ctx, "DELETE FROM sessions WHERE user_id=$1", userID); e != nil {
+			return e
+		}
+		_, e = tx.Exec(ctx, "UPDATE auth_tokens SET used_at=now() WHERE user_id=$1 AND used_at IS NULL", userID)
+		return e
 	})
 }
 func (s *Service) Consume(ctx context.Context, token, kind, password string) error {
