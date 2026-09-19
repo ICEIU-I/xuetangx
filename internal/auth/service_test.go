@@ -14,7 +14,7 @@ import (
 )
 
 func resetCode(body string) string {
-	return regexp.MustCompile(`Your code: ([0-9]{6})`).FindStringSubmatch(body)[1]
+	return regexp.MustCompile(`你的验证码：([0-9]{6})`).FindStringSubmatch(body)[1]
 }
 
 type inbox struct {
@@ -124,10 +124,19 @@ func TestPasswordResetCodeSingleUseAndResend(t *testing.T) {
 	if e := a.ConsumeResetCode(ctx, "code@example.test", first, "bad-password"); fault.Code(e) != "TOKEN_INVALID" {
 		t.Fatal(e)
 	}
+	wrong := "000000"
+	if second == wrong {
+		wrong = "000001"
+	}
 	for i := 0; i < 4; i++ {
-		if e := a.ConsumeResetCode(ctx, "code@example.test", "000000", "bad-password"); fault.Code(e) != "TOKEN_INVALID" {
+		if e := a.ConsumeResetCode(ctx, "code@example.test", wrong, "bad-password"); fault.Code(e) != "TOKEN_INVALID" {
 			t.Fatal(e)
 		}
+	}
+	var attempts int
+	var used bool
+	if e := s.Pool.QueryRow(ctx, "SELECT attempts,used_at IS NOT NULL FROM auth_challenges ORDER BY created_at DESC LIMIT 1").Scan(&attempts, &used); e != nil || attempts != 5 || !used {
+		t.Fatal("failed attempts were not durably committed")
 	}
 	if e := a.ConsumeResetCode(ctx, "code@example.test", second, "bad-password"); fault.Code(e) != "TOKEN_INVALID" {
 		t.Fatal(e)

@@ -150,8 +150,11 @@ func (s *Service) RequestResetCode(ctx context.Context, email string) error {
 		if _, e = tx.Exec(ctx, "INSERT INTO auth_challenges(id,user_id,kind,code_hash,expires_at) VALUES($1,$2,'reset',$3,$4)", challengeID, id, secure.Hash(code), time.Now().Add(10*time.Minute)); e != nil {
 			return e
 		}
-		body := "+----------------------+\n| CCF PASSWORD RESET   |\n|                      |\n| Your code: " + code + "     |\n| Expires in 10 minutes|\n|                      |\n| If you did not ask,  |\n| ignore this message. |\n+----------------------+\n"
-		return s.Mail.Enqueue(ctx, tx, email, "Your password reset code", body)
+		subject, plain, html, e := mailer.ResetCode(code)
+		if e != nil {
+			return e
+		}
+		return s.Mail.EnqueueHTML(ctx, tx, email, subject, plain, html)
 	})
 }
 
@@ -172,7 +175,8 @@ func (s *Service) ConsumeResetCode(ctx context.Context, email, code, password st
 	if e != nil {
 		return fault.New("INVALID_INPUT", e.Error())
 	}
-	return s.DB.Tx(ctx, func(tx pgx.Tx) error {
+	var rejected error
+	err := s.DB.Tx(ctx, func(tx pgx.Tx) error {
 		var challengeID, userID, expected string
 		var attempts int
 		e := tx.QueryRow(ctx, `SELECT c.id,c.user_id,c.code_hash,c.attempts FROM auth_challenges c JOIN users u ON u.id=c.user_id WHERE lower(u.email)=$1 AND c.kind='reset' AND c.used_at IS NULL AND c.expires_at>now() AND NOT u.disabled ORDER BY c.created_at DESC LIMIT 1 FOR UPDATE`, email).Scan(&challengeID, &userID, &expected, &attempts)
@@ -188,7 +192,10 @@ func (s *Service) ConsumeResetCode(ctx context.Context, email, code, password st
 			if e != nil {
 				return e
 			}
-			return fault.New("TOKEN_INVALID", "验证码无效或已过期")
+			// Returning the rejection from the callback would roll back the
+			// attempt counter, allowing unlimited guesses. Commit it first.
+			rejected = fault.New("TOKEN_INVALID", "验证码无效或已过期")
+			return nil
 		}
 		if _, e = tx.Exec(ctx, "UPDATE auth_challenges SET used_at=now() WHERE id=$1", challengeID); e != nil {
 			return e
@@ -202,6 +209,10 @@ func (s *Service) ConsumeResetCode(ctx context.Context, email, code, password st
 		_, e = tx.Exec(ctx, "UPDATE auth_tokens SET used_at=now() WHERE user_id=$1 AND used_at IS NULL", userID)
 		return e
 	})
+	if err != nil {
+		return err
+	}
+	return rejected
 }
 func (s *Service) Consume(ctx context.Context, token, kind, password string) error {
 	if kind != "verify" && kind != "reset" {

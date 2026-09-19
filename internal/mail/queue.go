@@ -2,9 +2,11 @@ package mail
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"strings"
 	"time"
 	"xuetangx/internal/secure"
 	"xuetangx/internal/store"
@@ -13,6 +15,20 @@ import (
 type Sender interface {
 	Send(context.Context, string, string, string) error
 }
+
+// RichSender is implemented by transports that can preserve an HTML
+// alternative while retaining a plain-text fallback for restrictive clients.
+type RichSender interface {
+	SendRich(context.Context, string, string, string, string) error
+}
+
+type richBody struct {
+	Plain string `json:"plain"`
+	HTML  string `json:"html"`
+}
+
+const richBodyPrefix = "xuetangx-mail-rich-v1:"
+
 type Queue struct {
 	DB     *store.Store
 	Keys   *secure.Keys
@@ -20,6 +36,21 @@ type Queue struct {
 }
 
 func (q *Queue) Enqueue(ctx context.Context, tx pgx.Tx, to, subject, body string) error {
+	return q.enqueue(ctx, tx, to, subject, body)
+}
+
+// EnqueueHTML stores a multipart/alternative message without changing the
+// existing outbox schema. The HTML is optional at send time: transports that
+// do not support RichSender still receive the safe plain-text fallback.
+func (q *Queue) EnqueueHTML(ctx context.Context, tx pgx.Tx, to, subject, plain, html string) error {
+	payload, e := json.Marshal(richBody{Plain: plain, HTML: html})
+	if e != nil {
+		return e
+	}
+	return q.enqueue(ctx, tx, to, subject, richBodyPrefix+string(payload))
+}
+
+func (q *Queue) enqueue(ctx context.Context, tx pgx.Tx, to, subject, body string) error {
 	id := uuid.NewString()
 	sealed, e := q.Keys.Seal("mail:"+id, body)
 	if e != nil {
@@ -39,12 +70,25 @@ func (q *Queue) Tick(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	plain, e := q.Keys.Open("mail:"+id, secure.Sealed{KeyID: key, Nonce: nonce, Ciphertext: body})
+	payload, e := q.Keys.Open("mail:"+id, secure.Sealed{KeyID: key, Nonce: nonce, Ciphertext: body})
 	if e == nil {
 		if q.Sender == nil {
 			e = fmt.Errorf("SMTP unavailable")
+		} else if strings.HasPrefix(payload, richBodyPrefix) {
+			var rich richBody
+			e = json.Unmarshal([]byte(strings.TrimPrefix(payload, richBodyPrefix)), &rich)
+			if e == nil && rich.Plain == "" {
+				e = fmt.Errorf("mail plain-text fallback unavailable")
+			}
+			if e == nil {
+				if sender, ok := q.Sender.(RichSender); ok {
+					e = sender.SendRich(ctx, to, subject, rich.Plain, rich.HTML)
+				} else {
+					e = q.Sender.Send(ctx, to, subject, rich.Plain)
+				}
+			}
 		} else {
-			e = q.Sender.Send(ctx, to, subject, plain)
+			e = q.Sender.Send(ctx, to, subject, payload)
 		}
 	}
 	if e != nil {
