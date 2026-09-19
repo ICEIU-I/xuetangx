@@ -27,7 +27,8 @@ test('duration is compact, readable and never invents missing averages', () => {
 test('summary renders four concise metrics with separate values and units', () => {
   const html = performanceSummary(metrics());
   assert.equal((html.match(/<dt\b/g) || []).length, 4);
-  for (const label of ['答题准确率', '平均耗时', '已完成任务', '运行中任务']) assert.ok(html.includes(label));
+  for (const label of ['答题准确率', '平均完成用时', '已完成任务', '运行中任务']) assert.ok(html.includes(label));
+  assert.doesNotMatch(html, /平均耗时/);
   assert.deepEqual(summaryValues(html), ['100%', '8分钟', '12', '2']);
   assert.match(html, /<strong>100<\/strong>\s*<span[^>]*>%<\/span>/);
   assert.match(html, /<strong>8<\/strong>\s*<span[^>]*>分钟<\/span>/);
@@ -63,7 +64,7 @@ test('compact average retains an exact duration and scope in its tooltip', () =>
   const html = performanceSummary(metrics({averageCourseDurationSeconds: 125}));
   assert.equal(summaryValues(html)[1], '2.1分钟');
   assert.match(html, /title="[^"]*2 分钟 5 秒[^"]*"/);
-  assert.match(html, /排队/); assert.match(html, /暂停/); assert.match(html, /等待/);
+  assert.match(html, /<dt title="[^"]*从任务创建到最后确认完成[^"]*排队[^"]*暂停[^"]*平台等待[^"]*">平均完成用时<\/dt>/);
   const long = performanceSummary(metrics({averageCourseDurationSeconds: 5400}));
   assert.equal(summaryValues(long)[1], '1.5小时');
   assert.match(long, /title="[^"]*1 小时 30 分钟[^"]*"/);

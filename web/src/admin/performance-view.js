@@ -46,7 +46,7 @@ export function performanceSummary(data, busy = false) {
   const durationTitle = duration ? formatDuration(performance.averageCourseDurationSeconds) : '';
   return `<dl class="overview-performance" aria-label="任务统计" aria-busy="${busy}">
     <div><dt title="仅统计可归属本站答题任务且平台已判分的提交样本">答题准确率</dt><dd>${valueMarkup(accuracyValue, accuracy === '—' ? '' : '%')}</dd></div>
-    <div><dt title="已完成整课程任务的平均用时，含排队、暂停和平台等待">平均耗时</dt><dd title="${e(durationTitle)}">${duration ? valueMarkup(duration.value, duration.unit) : valueMarkup('—')}</dd></div>
+    <div><dt title="从任务创建到最后确认完成的平均用时，含排队、暂停和平台等待">平均完成用时</dt><dd title="${e(durationTitle)}">${duration ? valueMarkup(duration.value, duration.unit) : valueMarkup('—')}</dd></div>
     <div><dt>已完成任务</dt><dd>${valueMarkup(validCount(performance?.completedCourseJobs) ? String(performance.completedCourseJobs) : '—')}</dd></div>
     <div><dt>运行中任务</dt><dd>${valueMarkup(running)}</dd></div>
   </dl>`;
