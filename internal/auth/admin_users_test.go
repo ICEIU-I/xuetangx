@@ -19,8 +19,10 @@ func TestAdminUserEditsAndSessionRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := auth.New(db, nil, "https://example.test")
-	a.RequireEmailVerification = false
-	if err = a.Register(ctx, "learner@example.test", "x"); err != nil {
+	if _, err := db.Pool.Exec(context.Background(), "UPDATE registration_settings SET email_verification_required=false"); err != nil {
+		t.Fatal(err)
+	}
+	if err = a.Register(ctx, "learner@example.test", "x", ""); err != nil {
 		t.Fatal(err)
 	}
 	login, err := a.Login(ctx, "learner@example.test", "x")

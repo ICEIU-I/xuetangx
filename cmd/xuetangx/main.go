@@ -90,7 +90,6 @@ func main() {
 		go queue.Run(ctx)
 	}
 	a := auth.New(db, queue, cfg.PublicURL)
-	a.RequireEmailVerification = cfg.RequireEmailVerification
 	httpClient := platform.NewClient()
 	ac := accounts.New(db, keys, httpClient.Authenticate)
 	broker := platform.NewBroker(ac, httpClient)

@@ -11,9 +11,11 @@ import (
 func TestDirectRegistrationAndPasswordChange(t *testing.T) {
 	db := testkit.Database(t)
 	a := auth.New(db, nil, "https://example.test")
-	a.RequireEmailVerification = false
+	if _, err := db.Pool.Exec(context.Background(), "UPDATE registration_settings SET email_verification_required=false"); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
-	if e := a.Register(ctx, "direct@example.test", "1"); e != nil {
+	if e := a.Register(ctx, "direct@example.test", "1", ""); e != nil {
 		t.Fatal(e)
 	}
 	var mailCount int
@@ -27,7 +29,7 @@ func TestDirectRegistrationAndPasswordChange(t *testing.T) {
 	if l.User.Admin {
 		t.Fatal("registration granted admin")
 	}
-	if e = a.Register(ctx, "direct@example.test", "2"); fault.Code(e) != "EMAIL_REGISTERED" {
+	if e = a.Register(ctx, "direct@example.test", "2", ""); fault.Code(e) != "EMAIL_REGISTERED" {
 		t.Fatal(e)
 	}
 	if e = a.ChangePassword(ctx, l.User.ID, "wrong-password", "2"); e == nil {

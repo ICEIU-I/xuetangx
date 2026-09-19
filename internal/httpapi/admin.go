@@ -16,6 +16,7 @@ func (s *Server) admin(fn http.HandlerFunc) http.Handler {
 	})
 }
 func (s *Server) adminRoutes(m *http.ServeMux) {
+	s.adminRegistrationRoutes(m)
 	m.Handle("GET /api/admin/jobs", s.admin(s.adminJobs))
 	s.adminUserRoutes(m)
 	s.adminCollectorRoutes(m)

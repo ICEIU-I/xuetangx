@@ -39,7 +39,7 @@ test('password layout caps desktop widths and uses full-width mobile actions', (
 });
 
 test('both settings pages retain shared password handling and sign-in revocation', () => {
-  for (const path of ['../src/settings/page.js', '../src/workspace/shell.js']) {
+  for (const path of ['../src/settings/page.js', '../src/admin/settings.js']) {
     assert.match(source(path), /mountPassword\(/);
   }
   const js = source('../src/settings/password.js');

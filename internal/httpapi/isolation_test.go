@@ -31,7 +31,9 @@ func TestHTTPIdentityCSRFAndEventIsolation(t *testing.T) {
 	ctx := context.Background()
 	keys := &secure.Keys{Active: "k", Values: map[string]string{"k": base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32))}}
 	a := auth.New(db, &mail.Queue{DB: db, Keys: keys}, "https://console.test")
-	a.RequireEmailVerification = false
+	if _, err := db.Pool.Exec(context.Background(), "UPDATE registration_settings SET email_verification_required=false"); err != nil {
+		t.Fatal(err)
+	}
 	mock := testkit.MockPlatform(t)
 	ac := accounts.New(db, keys, mock.Client.Authenticate)
 	b := &bank.Service{DB: db}

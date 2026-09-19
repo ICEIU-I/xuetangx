@@ -44,3 +44,29 @@ func TestResetCodeTemplate(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistrationCodeUsesSharedPixelTemplate(t *testing.T) {
+	subject, plain, html, err := RegistrationCode("123456")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range []string{plain, html} {
+		if !strings.Contains(part, "注册") || !strings.Contains(part, "123456") || !strings.Contains(part, "10 分钟") {
+			t.Fatal("missing registration content")
+		}
+		if strings.Contains(part, "PASSWORD RESET") || strings.Contains(part, "重置你的密码") {
+			t.Fatal("wrong purpose in registration email")
+		}
+	}
+	if subject != "CCF · 注册验证码" || strings.Contains(subject, "123456") {
+		t.Fatal("unexpected subject")
+	}
+	if !strings.Contains(html, "#ef5858") || !strings.Contains(html, "#409bd3") || !strings.Contains(html, "#e8ac20") {
+		t.Fatal("missing pixel brand")
+	}
+	if path := os.Getenv("REGISTRATION_MAIL_PREVIEW_PATH"); path != "" {
+		if err := os.WriteFile(path, []byte(html), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

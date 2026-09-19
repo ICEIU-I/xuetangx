@@ -36,21 +36,14 @@ func TestVerifiedRegistrationResetAndRevocation(t *testing.T) {
 	q := &mail.Queue{DB: s, Keys: keys, Sender: box}
 	a := auth.New(s, q, "https://example.test")
 	ctx := context.Background()
-	if e := a.Register(ctx, "User@Example.com", "correct-password-123"); e != nil {
-		t.Fatal(e)
-	}
-	if _, e := a.Login(ctx, "user@example.com", "correct-password-123"); fault.Code(e) != "EMAIL_UNVERIFIED" {
+	if e := a.RequestRegistrationCode(ctx, "User@Example.com"); e != nil {
 		t.Fatal(e)
 	}
 	if e := q.Tick(ctx); e != nil {
 		t.Fatal(e)
 	}
-	token := strings.Split(strings.Split(box.body, "#verify=")[1], "\n")[0]
-	if e := a.Consume(ctx, token, "verify", ""); e != nil {
+	if e := a.Register(ctx, "User@Example.com", "correct-password-123", resetCode(box.body)); e != nil {
 		t.Fatal(e)
-	}
-	if e := a.Consume(ctx, token, "verify", ""); fault.Code(e) != "TOKEN_INVALID" {
-		t.Fatal("reused token", e)
 	}
 	login, e := a.Login(ctx, "user@example.com", "correct-password-123")
 	if e != nil {
@@ -69,7 +62,7 @@ func TestVerifiedRegistrationResetAndRevocation(t *testing.T) {
 	if e = q.Tick(ctx); e != nil {
 		t.Fatal(e)
 	}
-	token = strings.Split(strings.Split(box.body, "#reset=")[1], "\n")[0]
+	token := strings.Split(strings.Split(box.body, "#reset=")[1], "\n")[0]
 	if e = a.Consume(ctx, token, "reset", "replacement-password-123"); e != nil {
 		t.Fatal(e)
 	}
@@ -90,9 +83,11 @@ func TestPasswordResetCodeSingleUseAndResend(t *testing.T) {
 	box := &inbox{}
 	q := &mail.Queue{DB: s, Keys: keys, Sender: box}
 	a := auth.New(s, q, "https://example.test")
-	a.RequireEmailVerification = false
+	if _, err := s.Pool.Exec(context.Background(), "UPDATE registration_settings SET email_verification_required=false"); err != nil {
+		t.Fatal(err)
+	}
 	ctx := context.Background()
-	if e := a.Register(ctx, "code@example.test", "old-password"); e != nil {
+	if e := a.Register(ctx, "code@example.test", "old-password", ""); e != nil {
 		t.Fatal(e)
 	}
 	if e := a.RequestResetCode(ctx, "code@example.test"); e != nil {

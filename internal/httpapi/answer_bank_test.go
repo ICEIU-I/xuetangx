@@ -20,11 +20,13 @@ func TestAnswerBankOverviewRequiresAdminNotPlatformAccount(t *testing.T) {
 	db := testkit.Database(t)
 	ctx := context.Background()
 	a := auth.New(db, nil, "https://console.test")
-	a.RequireEmailVerification = false
+	if _, err := db.Pool.Exec(context.Background(), "UPDATE registration_settings SET email_verification_required=false"); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Bootstrap(ctx, "admin@example.test", "test-password"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Register(ctx, "ordinary@example.test", "test-password"); err != nil {
+	if err := a.Register(ctx, "ordinary@example.test", "test-password", ""); err != nil {
 		t.Fatal(err)
 	}
 	engine := &workflow.Engine{Bank: &bank.Service{DB: db}, Jobs: &jobs.Repository{DB: db}}

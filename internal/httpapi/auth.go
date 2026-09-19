@@ -8,9 +8,8 @@ import (
 )
 
 func (s *Server) authRoutes(m *http.ServeMux) {
-	m.HandleFunc("GET /api/auth/config", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, 200, map[string]bool{"emailEnabled": !s.EmailDisabled, "emailVerificationRequired": s.Auth.RequireEmailVerification})
-	})
+	m.HandleFunc("GET /api/auth/config", s.authConfig)
+	m.HandleFunc("POST /api/auth/registration-code", s.registrationCode)
 	m.HandleFunc("POST /api/auth/register", s.register)
 	m.HandleFunc("POST /api/auth/login", s.login)
 	m.HandleFunc("POST /api/auth/verify", s.verify)
@@ -46,33 +45,6 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]bool{"ok": true})
-}
-func (s *Server) register(w http.ResponseWriter, r *http.Request) {
-	if s.Auth.RequireEmailVerification && s.emailUnavailable(w) {
-		return
-	}
-	var v struct{ Email, Password string }
-	if e := body(w, r, &v); e != nil {
-		writeError(w, e)
-		return
-	}
-	if !s.authLimit(w, r, "register", v.Email) {
-		return
-	}
-	release, e := s.hashSlot(r.Context())
-	if e != nil {
-		return
-	}
-	defer release()
-	if e = s.Auth.Register(r.Context(), v.Email, v.Password); e != nil {
-		writeError(w, e)
-		return
-	}
-	message := "注册成功，请登录"
-	if s.Auth.RequireEmailVerification {
-		message = "如邮箱可以注册，验证邮件将发送至该邮箱"
-	}
-	writeJSON(w, 202, map[string]any{"ok": true, "message": message})
 }
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	var v struct{ Email, Password string }

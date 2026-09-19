@@ -14,7 +14,6 @@ type Config struct {
 	TrafficFile                                                                            string
 	Development                                                                            bool
 	MailEnabled                                                                            bool
-	RequireEmailVerification                                                               bool
 	TrustedProxies                                                                         []*net.IPNet
 	GlobalJobs, UserJobs                                                                   int
 }
@@ -26,13 +25,6 @@ func Load() (Config, error) {
 	c.MailEnabled, mailErr = strconv.ParseBool(env("MAIL_ENABLED", "true"))
 	if mailErr != nil {
 		return c, fmt.Errorf("invalid MAIL_ENABLED")
-	}
-	c.RequireEmailVerification, mailErr = strconv.ParseBool(env("REQUIRE_EMAIL_VERIFICATION", "true"))
-	if mailErr != nil {
-		return c, fmt.Errorf("invalid REQUIRE_EMAIL_VERIFICATION")
-	}
-	if c.RequireEmailVerification && !c.MailEnabled {
-		return c, fmt.Errorf("email verification requires MAIL_ENABLED")
 	}
 	for _, raw := range strings.Split(os.Getenv("TRUSTED_PROXY_CIDRS"), ",") {
 		if strings.TrimSpace(raw) == "" {

@@ -19,3 +19,5 @@
 .auth-links button{font-weight:500}
 .auth-content .feedback{font-size:13px;margin-bottom:0}
 @media(max-width:500px){.auth-page{margin-top:36px}.auth-brand{margin-bottom:24px}.auth-brand .pixel-brand{--pixel-size:6px}.auth-content{padding:24px 20px}.auth-page .auth-content input{font-size:16px}}
+
+.registration-code-row{display:flex;gap:8px;align-items:stretch}.registration-code-row input{min-width:0;flex:1}.registration-code-row button{flex:none;font-size:12px;padding:8px 10px;box-shadow:2px 2px 0 var(--ink)}.registration-code-hint{font-size:12px;color:var(--muted);margin:10px 0 0}.registration-settings .form-actions{margin-top:20px}.registration-settings p{font-size:13px}

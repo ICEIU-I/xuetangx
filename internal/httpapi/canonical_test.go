@@ -61,7 +61,7 @@ func TestCanonicalHostAndNonHTMLRequestsAreUnchanged(t *testing.T) {
 		want                 int
 	}{
 		{"GET", "/assets/app.js", "", 200}, {"GET", "/missing.js", "", 404},
-		{"GET", "/health/live", "", 200}, {"GET", "/api/auth/config", "", 200},
+		{"GET", "/health/live", "", 200}, {"GET", "/api/auth/config", "", 503},
 		{"GET", "/api/missing", "", 404},
 		{"POST", "/api/auth/register", "https://legacy.test", 403},
 		{"POST", "/api/auth/login", "https://primary.test", 400}, // reaches body validation, not DB

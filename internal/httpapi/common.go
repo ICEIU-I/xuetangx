@@ -42,7 +42,7 @@ func writeError(w http.ResponseWriter, e error) {
 		status = 404
 	case "RATE_LIMITED":
 		status = 429
-	case "INTERNAL_ERROR", "UNAVAILABLE", "LEADER_UNAVAILABLE":
+	case "INTERNAL_ERROR", "UNAVAILABLE", "LEADER_UNAVAILABLE", "MAIL_UNAVAILABLE":
 		status = 503
 	}
 	writeJSON(w, status, map[string]any{"ok": false, "error": fault.Public(e), "code": fault.Code(e)})
@@ -158,7 +158,7 @@ func (s *Server) authLimit(w http.ResponseWriter, r *http.Request, kind, email s
 	if kind != "login" {
 		count, window = 5, time.Hour
 	}
-	if !s.limiter.Allow(kind+":ip:"+s.clientIP(r), count, window) || (email != "" && !s.limiter.Allow(kind+":email:"+strings.ToLower(email), count, window)) {
+	if !s.limiter.Allow(kind+":ip:"+s.clientIP(r), count, window) || (email != "" && !s.limiter.Allow(kind+":email:"+strings.ToLower(strings.TrimSpace(email)), count, window)) {
 		writeError(w, fault.New("RATE_LIMITED", "请求过于频繁，请稍后重试"))
 		return false
 	}

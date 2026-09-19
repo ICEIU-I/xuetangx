@@ -19,12 +19,11 @@ import (
 )
 
 type Service struct {
-	DB                       *store.Store
-	Mail                     *mailer.Queue
-	BaseURL                  string
-	OnDisabled               func(string)
-	RequireEmailVerification bool
-	dummy                    string
+	DB         *store.Store
+	Mail       *mailer.Queue
+	BaseURL    string
+	OnDisabled func(string)
+	dummy      string
 }
 type Login struct {
 	User  domain.User `json:"user"`
@@ -39,7 +38,7 @@ type Principal struct {
 
 func New(db *store.Store, m *mailer.Queue, base string) *Service {
 	dummy, _ := secure.Password(secure.Token())
-	return &Service{DB: db, Mail: m, BaseURL: base, dummy: dummy, RequireEmailVerification: true}
+	return &Service{DB: db, Mail: m, BaseURL: base, dummy: dummy}
 }
 func Email(v string) (string, error) {
 	v = strings.ToLower(strings.TrimSpace(v))
@@ -48,33 +47,6 @@ func Email(v string) (string, error) {
 		return "", fault.New("INVALID_INPUT", "邮箱格式无效")
 	}
 	return v, nil
-}
-func (s *Service) Register(ctx context.Context, email, password string) error {
-	email, e := Email(email)
-	if e != nil {
-		return e
-	}
-	hash, e := secure.Password(password)
-	if e != nil {
-		return fault.New("INVALID_INPUT", e.Error())
-	}
-	return s.DB.Tx(ctx, func(tx pgx.Tx) error {
-		id := uuid.NewString()
-		tag, e := tx.Exec(ctx, "INSERT INTO users(id,email,password_hash,verified) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", id, email, hash, !s.RequireEmailVerification)
-		if e != nil {
-			return e
-		}
-		if tag.RowsAffected() == 0 {
-			if !s.RequireEmailVerification {
-				return fault.New("EMAIL_REGISTERED", "该邮箱已注册，请登录")
-			}
-			return nil
-		}
-		if !s.RequireEmailVerification {
-			return nil
-		}
-		return s.issue(ctx, tx, id, email, "verify")
-	})
 }
 func (s *Service) issue(ctx context.Context, tx pgx.Tx, id, email, kind string) error {
 	token := secure.Token()

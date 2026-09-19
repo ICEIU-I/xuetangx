@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>CCF · 密码重置验证码</title></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light"><title>{{.Subject}}</title></head>
 <body style="margin:0;padding:0;background-color:#fdf1d6;color:#1b1a2e;font-family:'PingFang SC','Microsoft YaHei',Arial,sans-serif;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">你的 CCF 密码重置验证码已准备好，10 分钟内有效。请勿向他人分享。</div>
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{.Preheader}}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fdf1d6" style="width:100%;background-color:#fdf1d6;"><tr><td align="center" style="padding:40px 16px;">
 <table role="presentation" width="480" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:480px;">
 <tr><td align="center" style="padding:0 0 28px;">{{.Brand}}</td></tr>
@@ -15,9 +15,9 @@
 </tr></table>
 </td></tr>
 <tr><td style="padding:28px 24px 30px;">
-<p style="margin:0 0 10px;font:700 11px/16px 'Courier New',monospace;letter-spacing:2px;color:#a83b3b;">PASSWORD RESET</p>
-<h1 style="margin:0 0 14px;font-size:27px;line-height:1.35;font-weight:800;color:#1b1a2e;">重置你的密码</h1>
-<p style="margin:0 0 24px;font-size:14px;line-height:1.8;color:#625e76;">你正在重置 CCF 账号密码。<br>请回到刚才的页面，输入下方验证码。</p>
+<p style="margin:0 0 10px;font:700 11px/16px 'Courier New',monospace;letter-spacing:2px;color:#a83b3b;">{{.Eyebrow}}</p>
+<h1 style="margin:0 0 14px;font-size:27px;line-height:1.35;font-weight:800;color:#1b1a2e;">{{.Heading}}</h1>
+<p style="margin:0 0 24px;font-size:14px;line-height:1.8;color:#625e76;">{{.Intro}}<br>{{.Instruction}}</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;"><tr><td align="center" bgcolor="#ffe9a8" style="background-color:#ffe9a8;border:2px solid #1b1a2e;padding:20px 8px 18px;">
 <p style="margin:0 0 8px;font-size:11px;line-height:16px;font-weight:700;letter-spacing:3px;color:#625e76;">一次性验证码</p>
 <p style="margin:0;font-family:'Courier New',Courier,monospace;font-size:38px;line-height:48px;font-weight:700;letter-spacing:5px;color:#1b1a2e;white-space:nowrap;">{{.Code}}</p>
@@ -25,7 +25,7 @@
 <p style="margin:17px 0 24px;font-size:12px;line-height:1.8;color:#625e76;text-align:center;"><strong style="color:#1b1a2e;">10 分钟内有效</strong> &nbsp;·&nbsp; 仅可使用一次</p>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-top:1px solid #ded4ba;padding-top:18px;">
 <p style="margin:0 0 6px;font-size:12px;line-height:1.8;color:#625e76;">请勿将验证码分享给任何人。</p>
-<p style="margin:0;font-size:12px;line-height:1.8;color:#625e76;">如果这不是你的操作，请忽略此邮件，你的密码不会改变。</p>
+<p style="margin:0;font-size:12px;line-height:1.8;color:#625e76;">{{.Notice}}</p>
 </td></tr></table>
 </td></tr></table>
 </td></tr>
