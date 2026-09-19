@@ -65,5 +65,11 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		}
 		out[key] = n
 	}
+	performance, err := readAdminPerformance(r.Context(), s.Auth.DB)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	out["performance"] = performance
 	writeJSON(w, 200, out)
 }

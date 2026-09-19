@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { serviceStatus, overviewLinks, conflictRows, systemDetails } from '../src/admin/overview-view.js';
+import { readFileSync } from 'node:fs';
+import { serviceStatus, overviewLinks, systemDetails } from '../src/admin/overview-view.js';
 
 test('overview shows three relevant navigation counts without duplicate metrics', () => {
   const html = overviewLinks({users:7,capturedAnswers:230,availableCollectors:1});
@@ -14,12 +15,11 @@ test('service check distinguishes unknown and not-ready status', () => {
   assert.match(serviceStatus({ready:true}), /运行正常/);
   assert.match(serviceStatus({ready:false}), /服务未就绪/);
 });
-test('conflicts are concise escaped rows with navigation and distinct empty states', () => {
-  const html = conflictRows([{title:'<img src=x>',problemId:125,classroomId:25}], '');
-  assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img/);
-  assert.match(html, /href="\/admin\/answers\?course=25"/);
-  assert.match(conflictRows([],''), /暂无题库冲突/);
-  assert.match(conflictRows([],'physics'), /没有匹配的记录/);
+test('overview no longer renders or requests question conflicts', () => {
+  const source = readFileSync(new URL('../src/admin/overview.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /conflicts|题库冲突|listSearch|pager/);
+  assert.match(source, /performanceSummary\(metrics\?\.performance, busy\)/);
+  assert.match(source, /\/api\/admin\/metrics/);
 });
 test('technical metrics stay inside closed details', () => {
   assert.equal(systemDetails(null), '');
