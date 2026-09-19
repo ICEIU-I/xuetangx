@@ -95,3 +95,7 @@ npm run build --prefix web
 ```
 
 测试通过模拟上游接口验证真实子进程、双账号答案流水线、服务端限流响应、账号隔离、重启恢复和 CLI 接入，不消耗真实账号作答次数。实际题库、运行记录、凭据、日志和构建产物全部留在本地忽略目录。
+
+## Source / data boundary
+
+This repository is the public source-only edition. Database schemas and migrations are included for reproducible builds; production database records, backups, credentials and deployment notes are not. See [data boundary](docs/data-boundary.md).

@@ -31,3 +31,21 @@ internal/webassets/assets/*
 tunnel.yml
 .env.*
 !.env.example
+
+# Public-source privacy boundary
+cases/
+reports/
+exports/
+backups/
+*.pgdump
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.sql.gz
+*.pem
+*.key
+*.p12
+*.pfx
+*.bak
+.DS_Store
