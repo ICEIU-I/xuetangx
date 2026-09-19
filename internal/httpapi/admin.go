@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 	"xuetangx/internal/fault"
 )
 
@@ -71,5 +72,10 @@ func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	out["performance"] = performance
+	rng := r.URL.Query().Get("trafficRange")
+	if rng == "" {
+		rng = "7d"
+	}
+	out["traffic"] = s.traffic.snapshotRange(time.Now(), rng)
 	writeJSON(w, 200, out)
 }

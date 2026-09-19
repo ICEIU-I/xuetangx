@@ -1,0 +1,17 @@
+.overview-traffic{margin:0 0 24px;border:var(--line);background:var(--surface);padding:18px 20px;min-width:0}
+.overview-traffic header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
+.overview-traffic h2{font-size:15px;margin:0;font-weight:700}
+.traffic-heading{display:flex;align-items:baseline;gap:12px}.traffic-total{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.traffic-range{display:flex;border:1px solid #ded4ba;overflow:hidden}
+.traffic-range button{border-radius:0;box-shadow:none;min-height:32px;border:0;border-left:1px solid #ded4ba;background:transparent;color:var(--muted);padding:5px 11px;font:inherit;font-size:12px;cursor:pointer}
+.traffic-range button:first-child{border-left:0}
+.traffic-range button.selected{background:var(--ink);color:#fff}
+.traffic-range button:disabled{cursor:wait;opacity:.55}
+.traffic-chart{position:relative;height:180px;min-width:0}
+.traffic-chart svg{display:block;width:100%;height:100%;overflow:visible;color:var(--blue)}
+.traffic-chart line{stroke:#ded4ba;stroke-width:1}
+.traffic-chart .traffic-grid{stroke-dasharray:3 5}
+.traffic-y{position:absolute;left:0;font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}.traffic-y.top{top:8px}.traffic-y.bottom{bottom:24px}
+.traffic-labels{position:absolute;left:4.2%;right:1.7%;bottom:0;display:flex;justify-content:space-between;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.traffic-empty{height:180px;display:grid;place-items:center;margin:0;color:var(--muted);font-size:13px}
+@media(max-width:600px){.overview-traffic{padding:16px 14px}.traffic-chart{height:150px}.traffic-empty{height:150px}}

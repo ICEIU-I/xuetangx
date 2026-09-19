@@ -18,7 +18,7 @@ test('service check distinguishes unknown and not-ready status', () => {
 test('overview no longer renders or requests question conflicts', () => {
   const source = readFileSync(new URL('../src/admin/overview.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /conflicts|题库冲突|listSearch|pager/);
-  assert.match(source, /performanceSummary\(metrics\?\.performance, busy\)/);
+  assert.match(source, /performanceSummary\(metrics, busy\)/);
   assert.match(source, /\/api\/admin\/metrics/);
 });
 test('technical metrics stay inside closed details', () => {

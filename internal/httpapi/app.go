@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"time"
 	"xuetangx/internal/accounts"
 	"xuetangx/internal/auth"
 	"xuetangx/internal/catalog"
@@ -26,10 +27,11 @@ type Server struct {
 	hashSlots      chan struct{}
 	sseMu          sync.Mutex
 	sse            map[string]int
+	traffic        *pageTraffic
 }
 
 func New(a *auth.Service, ac *accounts.Service, e *workflow.Engine, c *catalog.Service) *Server {
-	return &Server{Auth: a, Accounts: ac, Engine: e, Jobs: e.Jobs, Catalog: c, hashSlots: make(chan struct{}, 4), sse: map[string]int{}}
+	return &Server{Auth: a, Accounts: ac, Engine: e, Jobs: e.Jobs, Catalog: c, hashSlots: make(chan struct{}, 4), sse: map[string]int{}, traffic: newPageTraffic(time.Now())}
 }
 func (s *Server) Handler() http.Handler {
 	m := http.NewServeMux()

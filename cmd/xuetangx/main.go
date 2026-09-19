@@ -104,6 +104,9 @@ func main() {
 	defer engine.Close()
 	a.OnDisabled = engine.Disable
 	server := httpapi.New(a, ac, engine, cat)
+	if e = server.ConfigureTrafficFile(cfg.TrafficFile); e != nil {
+		fatal(e)
+	}
 	server.WeChat = accounts.NewWeChatLogin(ac, platform.NewWeChatClient())
 	defer server.WeChat.Close()
 	server.EmailDisabled = !cfg.MailEnabled

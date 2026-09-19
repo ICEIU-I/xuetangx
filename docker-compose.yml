@@ -35,8 +35,10 @@ services:
       MAIL_ENABLED: "false"
       REQUIRE_EMAIL_VERIFICATION: "false"
       LISTEN_ADDR: 0.0.0.0:8788
+      TRAFFIC_FILE: /var/lib/xuetangx/page-traffic.json
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:?set exact trusted proxy CIDRs}
     secrets: [database_url, credential_keys.json]
+    volumes: [app-metrics:/var/lib/xuetangx]
     ports: ["127.0.0.1:18788:8788"]
     networks: [backend, edge]
     healthcheck:
@@ -66,7 +68,7 @@ networks:
   edge:
     ipam:
       config: [{subnet: "${EDGE_SUBNET:?set EDGE_SUBNET}"}]
-volumes: {postgres-data: {}}
+volumes: {postgres-data: {}, app-metrics: {}}
 secrets:
   postgres_password: {file: ./secrets/postgres_password}
   database_url: {file: ./secrets/database_url}

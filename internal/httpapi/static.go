@@ -36,6 +36,14 @@ func (s *Server) static() http.Handler {
 			}
 			w.Header().Set("Cache-Control", "no-store")
 			copy.URL.Path = "/"
+			if s.traffic != nil && isTrafficDocument(r) {
+				response := &trafficResponse{ResponseWriter: w}
+				http.FileServer(http.FS(s.Assets)).ServeHTTP(response, copy)
+				if response.status == http.StatusOK {
+					s.traffic.recordNow()
+				}
+				return
+			}
 		}
 		http.FileServer(http.FS(s.Assets)).ServeHTTP(w, copy)
 	})

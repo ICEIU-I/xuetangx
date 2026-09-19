@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	DatabaseURL, Listen, PublicURL, KeyFile, SMTPAddress, SMTPUser, SMTPPassword, SMTPFrom string
+	TrafficFile                                                                            string
 	Development                                                                            bool
 	MailEnabled                                                                            bool
 	RequireEmailVerification                                                               bool
@@ -19,7 +20,7 @@ type Config struct {
 }
 
 func Load() (Config, error) {
-	c := Config{DatabaseURL: os.Getenv("DATABASE_URL"), Listen: env("LISTEN_ADDR", "127.0.0.1:8788"), PublicURL: env("PUBLIC_BASE_URL", "http://127.0.0.1:8788"), KeyFile: os.Getenv("CREDENTIAL_KEY_FILE"), Development: os.Getenv("APP_ENV") == "development", GlobalJobs: 10, UserJobs: 2,
+	c := Config{TrafficFile: os.Getenv("TRAFFIC_FILE"), DatabaseURL: os.Getenv("DATABASE_URL"), Listen: env("LISTEN_ADDR", "127.0.0.1:8788"), PublicURL: env("PUBLIC_BASE_URL", "http://127.0.0.1:8788"), KeyFile: os.Getenv("CREDENTIAL_KEY_FILE"), Development: os.Getenv("APP_ENV") == "development", GlobalJobs: 10, UserJobs: 2,
 		SMTPAddress: os.Getenv("SMTP_ADDRESS"), SMTPUser: os.Getenv("SMTP_USER"), SMTPPassword: os.Getenv("SMTP_PASSWORD"), SMTPFrom: os.Getenv("SMTP_FROM")}
 	var mailErr error
 	c.MailEnabled, mailErr = strconv.ParseBool(env("MAIL_ENABLED", "true"))
