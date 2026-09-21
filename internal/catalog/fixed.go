@@ -2,7 +2,7 @@ package catalog
 
 import "xuetangx/internal/domain"
 
-// FixedCourse is the course shown by the unified workflow for every user.
+// FixedCourse is an optional pinned entry alongside the current account's enrolled courses.
 // The classroom is the 2026 autumn offering already present in this project's
 // answer bank.
 const (

@@ -1,7 +1,8 @@
+import { scoreCourse, courseIdentity } from '../workspace/courses.js';
 import { primaryId } from '../workspace/presentation.js';
-export const emptyScore = () => ({ loading: false, available: false, value: null, breakdown: [], message: '', primaryId: 0, updatedAt: 0, retryAt: 0, stale: false, waiting: false });
+export const emptyScore = () => ({ loading: false, available: false, value: null, breakdown: [], message: '', primaryId: 0, courseKey: '', updatedAt: 0, retryAt: 0, stale: false, waiting: false });
 
-// One account-scoped request and timer shared by the course and task views.
+// One account-and-course-scoped request/timer shared by the active view.
 export function createCourseScore({ state, client, interval = 15000, now = Date.now, schedule = setTimeout, cancel = clearTimeout, visibility = globalThis.document }) {
   let generation = 0, closed = false, pending, abort, timer, failures = 0, suspended = false;
   const watchers = new Set();
@@ -9,7 +10,7 @@ export function createCourseScore({ state, client, interval = 15000, now = Date.
   function stopTimer() { cancel(timer); timer = null; }
   function plan() {
     stopTimer();
-    if (closed || suspended || pending || !state.session.connected || !visible()) return;
+    if (closed || suspended || pending || !state.session.connected || !scoreCourse(state) || !visible()) return;
     const due = Math.max(state.score.retryAt || 0, (state.score.updatedAt || 0) + interval);
     timer = schedule(() => { timer = null; void load(); }, Math.max(0, due - now()));
   }
@@ -22,7 +23,9 @@ export function createCourseScore({ state, client, interval = 15000, now = Date.
     state.score = { ...state.score, loading: false, waiting: true, stale: state.score.available, retryAt, message };
   }
   function load() {
-    if (closed || suspended || !state.session.connected || !client.workflowCourseScore) return Promise.resolve();
+    if (closed || suspended || !state.session.connected || !scoreCourse(state) || !client.workflowCourseScore) return Promise.resolve();
+    const target = scoreCourse(state), courseKey = courseIdentity(target);
+    if (state.score.courseKey && state.score.courseKey !== courseKey) reset();
     if (pending) return pending;
     stopTimer();
     const limit = state.rateLimits?.primary;
@@ -32,22 +35,23 @@ export function createCourseScore({ state, client, interval = 15000, now = Date.
     }
     abort = new AbortController();
     const id = ++generation, account = primaryId(state.session), signal = abort.signal;
-    state.score = { ...state.score, loading: true, primaryId: account };
+    state.score = { ...state.score, loading: true, primaryId: account, courseKey };
     pending = (async () => {
       try {
-        const result = await client.workflowCourseScore(signal);
-        if (closed || id !== generation || primaryId(state.session) !== account) return;
+        const result = await client.workflowCourseScore(signal, target.url);
+        if (closed || id !== generation || primaryId(state.session) !== account || courseIdentity(scoreCourse(state)) !== courseKey) return;
         if (Number(result.primaryId) !== account) throw Object.assign(new Error('平台账号已切换，请重新连接'), { code: 'ACCOUNT_CHANGED' });
+        if (result.course && courseIdentity(result.course) !== courseKey) throw new Error('课程成绩响应不匹配，请重试');
         if (result.waiting) {
           waitUntil(Math.max(Number(result.retryAt) || 0, now() + interval), result.message || '平台暂时限制访问，稍后自动更新');
           return;
         }
-        if (result.course?.classroomId === state.courses[0]?.classroomId && result.course?.title) state.courses = [result.course];
+        if (result.course?.title) state.courses = state.courses.map(c => courseIdentity(c) === courseKey ? { ...c, title: result.course.title } : c);
         const available = result.available === true && typeof result.score === 'number' && Number.isFinite(result.score) && result.score >= 0 && result.score <= 100;
-        state.score = { ...emptyScore(), available, value: available ? result.score : null, breakdown: result.breakdown || [], message: result.message || (available ? '' : '平台暂无成绩'), primaryId: account, updatedAt: now() };
+        state.score = { ...emptyScore(), available, value: available ? result.score : null, breakdown: result.breakdown || [], message: result.message || (available ? '' : '平台暂无成绩'), primaryId: account, courseKey, updatedAt: now() };
         failures = 0;
       } catch (error) {
-        if (closed || id !== generation || primaryId(state.session) !== account) return;
+        if (closed || id !== generation || primaryId(state.session) !== account || courseIdentity(scoreCourse(state)) !== courseKey) return;
         suspended = ['ACCOUNT_REQUIRED', 'ACCOUNT_CHANGED', 'AUTH_REQUIRED'].includes(error.code);
         if (suspended) state.score = { ...emptyScore(), primaryId: account, message: '请重新连接学堂在线' };
         else state.score = { ...state.score, loading: false, stale: state.score.available, waiting: false, message: error.message || '成绩更新失败，将自动重试', retryAt: now() + Math.min(interval * 2 ** failures++, 120000) };
@@ -58,6 +62,7 @@ export function createCourseScore({ state, client, interval = 15000, now = Date.
     return pending;
   }
   function watch(accept = () => true) {
+    if (state.score.courseKey && state.score.courseKey !== courseIdentity(scoreCourse(state))) reset();
     watchers.add(accept); plan();
     return () => { watchers.delete(accept); plan(); };
   }

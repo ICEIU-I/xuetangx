@@ -17,3 +17,9 @@
 - Changes: rebuilt public branch history with pseudonymous commit metadata; removed private deployment notes and data directories from public history; retained buildable application source and database initialization scripts.
 - Purpose: prevent personal identity, real infrastructure details and business data from being published with source releases.
 - Validation: full-history path/content/identity checks passed before publication; PostgreSQL-backed full Go race tests, go vet, 50 frontend tests and the production web build passed; application source is byte-identical to the verified private release. No live data or credentials are included.
+
+### 2026-09-21: Select enrolled courses alongside an optional fixed entry
+
+- Changes: merge the current account's paginated enrolled courses with the optional fixed course; add a homepage course selector with account-scoped remembered selection, explicit refresh and query-failure feedback. Task start/recovery and grade reads follow the selected classroom without starting or enrolling on selection.
+- Fixes: grade refresh no longer replaces the entire catalog with one course. Late account/course responses are discarded, task details query their own course, and pending ambiguous starts lock selection. Only the fixed course retains the existing explicit-start free enrollment path.
+- Validation: isolated full PostgreSQL Go race tests, go vet, 60 frontend tests and production build passed; browser mock verified course switching, exact start URL, state recovery, pagination/error handling and desktop/mobile layout. Production release is maintained from the private repository; no operational data or credentials are included here.

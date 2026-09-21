@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"github.com/jackc/pgx/v5"
 	"net/http"
 	"time"
 	"xuetangx/internal/catalog"
@@ -20,8 +21,30 @@ func (s *Server) courseScore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
+	target := catalog.FixedCourse()
+	if raw := r.URL.Query().Get("courseUrl"); raw != "" {
+		target, err = platform.ParseCourse(raw)
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
+	if !catalog.IsFixedCourse(target) {
+		// Resolve only this account's known enrolled classroom, not another
+		// user's catalog. The platform authorizes the actual grade read too.
+		err = s.Catalog.DB.Pool.QueryRow(ctx, `SELECT c.title,c.url FROM courses c JOIN account_courses ac ON ac.course_id=c.id
+		 WHERE ac.account_id=$1 AND c.classroom_id=$2 AND c.sign=$3 AND c.course_sign=$4`, account.ID, target.ClassroomID, target.Sign, target.CourseSign).Scan(&target.Title, &target.URL)
+		if err == pgx.ErrNoRows {
+			writeError(w, fault.New("ENROLLMENT_REQUIRED", "请刷新已选课程列表后再查询成绩"))
+			return
+		}
+		if err != nil {
+			writeError(w, err)
+			return
+		}
+	}
 	waiting := func(readyAt *int64) {
-		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "primaryId": account.UserID, "available": false, "waiting": true, "retryAt": readyAt, "message": "平台暂时限制访问，稍后自动更新"})
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "primaryId": account.UserID, "course": target, "available": false, "waiting": true, "retryAt": readyAt, "message": "平台暂时限制访问，稍后自动更新"})
 	}
 	// A display read must not sit in the background task's unlimited retry loop.
 	// Preserve the broker's account-wide cooldown and credential validation.
@@ -35,7 +58,7 @@ func (s *Server) courseScore(w http.ResponseWriter, r *http.Request) {
 		response, err = s.Engine.Broker.Request(ctx, a, method, path, body)
 		return response, err
 	}}
-	score, readErr := reader.Score(ctx, account, catalog.FixedCourse())
+	score, readErr := reader.Score(ctx, account, target)
 	// Never return a late response from a replaced or disconnected account.
 	current, err := s.Accounts.Require(r.Context(), owner, "primary")
 	if err != nil {

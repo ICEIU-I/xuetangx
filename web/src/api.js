@@ -16,7 +16,7 @@ export const api = {
   workflowState: (offset = 0, limit = 25, query = '') => j(`/api/workflow/state?offset=${offset}&limit=${limit}&q=${encodeURIComponent(query)}`),
   workflowJob: id => j(`/api/workflow/${encodeURIComponent(id)}`),
   workflowCourses: () => j('/api/workflow/courses'),
-  workflowCourseScore: signal => j('/api/workflow/course-score', { signal }),
+  workflowCourseScore: (signal, courseUrl) => j('/api/workflow/course-score' + (courseUrl ? '?' + new URLSearchParams({ courseUrl }) : ''), { signal }),
   workflowStart: (courseUrl, concurrency = 1, options = {}) => j('/api/workflow/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...options, courseUrl, concurrency }) }),
   workflowControl: (id, action) => j(`/api/workflow/${encodeURIComponent(id)}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }),
   testConnect: (cookie) => j('/api/test-cookie', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cookie }) }),

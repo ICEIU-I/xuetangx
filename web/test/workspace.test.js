@@ -75,3 +75,23 @@ test('definite rejection permits retry and pause never becomes auto-resume', asy
 test('SSE failure uses read-only refresh and disposal closes the subscription', async () => {
   const w=harness({},session,[job()]);await w.initialize();w.streamError();assert.equal(w.state.stream,'reconnecting');w.dispose();assert.equal(w.disposed(),true);w.receive({type:'workflow',job:job({revision:8,status:'done'})});assert.equal(w.state.jobs[0].status,'running');
 });
+
+const otherCourse={url:'https://www.xuetangx.com/learn/space/math/math/42',classroomId:42,title:'高等数学',enrolled:true};
+test('selected enrolled course drives jobs and start, without forcing the fixed course', async t => {
+ let requested,starts=0;const other=job({id:'job-math',course:otherCourse,status:'paused'});
+ const w=harness({workflowCourses:async()=>({courses:[{...course,fixed:true},otherCourse]}),workflowStart:async url=>{starts++;requested=url;return {job:other};}},session,[job(),other]);t.after(w.dispose);
+ await w.initialize();w.selectCourse(otherCourse.url);assert.equal(w.currentJob.value.id,'job-math');assert.equal(starts,0);await w.start(w.state.selectedCourseUrl);assert.equal(requested,otherCourse.url);assert.equal(starts,1);assert.equal(w.state.courses.length,2);
+ w.selectCourse(course.url);assert.equal(w.currentJob.value.id,'job-1');await w.loadCourses();assert.equal(w.state.selectedCourseUrl,course.url);
+});
+test('course refresh retains a non-fixed selection and explicitly reports upstream failure', async t=>{
+ let warning=false;const w=harness({workflowCourses:async()=>warning?{courses:[course],warning:'upstream unavailable'}:{courses:[course,otherCourse]}});t.after(w.dispose);await w.initialize();w.selectCourse(otherCourse.url);await w.loadCourses();assert.equal(w.state.selectedCourseUrl,otherCourse.url);warning=true;await w.loadCourses();assert.equal(w.state.courses.length,2);assert.equal(w.state.selectedCourseUrl,otherCourse.url);assert.match(w.state.coursesWarning,/unavailable/);
+});
+test('old account course-list response is ignored after account switch', async t=>{
+ let resolve;const w=harness();t.after(w.dispose);await w.initialize();w.client.workflowCourses=()=>new Promise(r=>resolve=r);const pending=w.loadCourses();w.setSession({connected:true,user:{user_id:202}});resolve({courses:[course,otherCourse],primaryId:101});await pending;assert.deepEqual(w.state.courses,[]);assert.equal(w.state.selectedCourseUrl,'');
+});
+test('pending startup locks course switching and cannot create another course task', async t=>{
+ const w=harness({workflowCourses:async()=>({courses:[course,otherCourse]}),workflowStart:async()=>{throw new TypeError('offline');}});t.after(w.dispose);await w.initialize();await w.start(course.url);w.selectCourse(otherCourse.url);assert.equal(w.state.selectedCourseUrl,course.url);assert.equal(w.state.pendingStart.courseUrl,course.url);
+});
+test('selection finds the chosen course task outside the first page', async t=>{
+ const other=job({id:'old-math',course:otherCourse,status:'done'});const w=harness({workflowCourses:async()=>({courses:[course,otherCourse]}),workflowState:async offset=>({accounts:{primary:session},jobs:offset===100?[other]:[job()],pagination:{total:101}})});t.after(w.dispose);await w.initialize();w.selectCourse(otherCourse.url);await new Promise(r=>setImmediate(r));assert.equal(w.currentJob.value.id,'old-math');
+});

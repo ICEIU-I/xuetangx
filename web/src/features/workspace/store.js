@@ -1,15 +1,16 @@
 import { observable } from '../../shared/observable.js';
 import { api, subscribeEvents } from '../../api.js';
 import { createCourseScore, emptyScore } from '../course-score/store.js';
+import { selectedCourse } from './courses.js';
 import { latestJob, primaryId } from './presentation.js';
 
 export function createWorkspace({ client = api, subscribe = subscribeEvents, storage = globalThis.sessionStorage, owner = '', pollMs = 5000 } = {}) {
-  const changes = observable({ session: { connected: false, user: null }, jobs: [], courses: [], score: emptyScore(), rateLimits: {}, collectorLimits: {}, sharedCollectors: 0, loading: true, error: '', syncError: '', stream: 'connecting', starting: false, pendingStart: null, actionId: '', detailId: '' });
+  const changes = observable({ session: { connected: false, user: null }, jobs: [], courses: [], selectedCourseUrl: '', coursesLoading: false, coursesWarning: '', score: emptyScore(), rateLimits: {}, collectorLimits: {}, sharedCollectors: 0, loading: true, error: '', syncError: '', stream: 'connecting', starting: false, pendingStart: null, actionId: '', detailId: '' });
   const state = changes.state;
   const scores = createCourseScore({ state, client });
   const loadScore = scores.load;
-  const currentJob = { get value() { return latestJob(state.jobs, state.session, state.courses[0]); } };
-  let closed = false, epoch = 0, refreshId = 0, stream, timer, refreshing;
+  const currentJob = { get value() { return latestJob(state.jobs, state.session, selectedCourse(state)); } };
+  let closed = false, epoch = 0, refreshId = 0, stream, timer, refreshing, courseRequest = 0, jobRequest = 0;
   const storageKey = `iceiu:pending-start:${owner}`;
   try { state.pendingStart = JSON.parse(storage?.getItem(storageKey) || 'null'); } catch {}
   function savePending(value) {
@@ -28,6 +29,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     if (primaryId(session) !== primaryId(state.session) || session.connected !== state.session.connected || session.connectedAt !== state.session.connectedAt) {
       epoch++;
       state.jobs = [];
+      courseRequest++; jobRequest++; state.courses = []; state.selectedCourseUrl = ''; state.coursesWarning = ''; state.coursesLoading = false;
       state.rateLimits = {};
       state.collectorLimits = {};
       scores.reset();
@@ -35,7 +37,6 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
       if (state.pendingStart && primaryId(session) && Number(state.pendingStart.primaryId) !== primaryId(session)) savePending(null);
     }
     state.session = session;
-    if (session.connected && state.courses.length && state.score.primaryId !== primaryId(session)) void loadScore();
   }
   function recoverPending() {
     const pending = state.pendingStart;
@@ -48,7 +49,11 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     const id = ++refreshId, identity = epoch;
     const snapshot = await client.workflowState(0, 100);
     if (closed || id !== refreshId || identity !== epoch) return;
+    const before = epoch;
     if (snapshot.accounts?.primary) setSession(snapshot.accounts.primary);
+    const snapshotEpoch = epoch;
+    if (before !== epoch) await loadCourses();
+    if (closed || id !== refreshId || snapshotEpoch !== epoch) return;
     for (const job of snapshot.jobs || []) mergeJob(job);
     state.rateLimits = snapshot.rateLimits || {};
     state.collectorLimits = snapshot.collectorLimits || {};
@@ -72,34 +77,64 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     if (closed) return;
     state.stream = 'connected';
     if (event.type === 'accounts' && event.accounts?.primary) {
-      setSession(event.accounts.primary);
+      const before = epoch; setSession(event.accounts.primary);
+      if (before !== epoch) void loadCourses();
       refreshSafely();
     }
     if (event.type === 'workflow') { mergeJob(event.job); recoverPending(); }
     if (event.type === 'rate-limit') state.rateLimits = { ...state.rateLimits, [event.role]: event };
   }
-  async function initialize() {
-    state.loading = true;
-    state.error = '';
+  const courseStorageKey = () => `iceiu:selected-course:${owner}:${primaryId(state.session)}`;
+  async function loadSelectedJob() {
+    const id = ++jobRequest, identity = epoch, url = selectedCourse(state)?.url;
+    if (!url || currentJob.value || !primaryId(state.session)) return;
+    let offset = 100;
+    while (!closed && identity === epoch && id === jobRequest && selectedCourse(state)?.url === url) {
+      const page = await client.workflowState(offset, 100);
+      if (closed || identity !== epoch || id !== jobRequest || selectedCourse(state)?.url !== url) return;
+      (page.jobs || []).forEach(mergeJob);
+      if (currentJob.value || offset + 100 >= (page.pagination?.total || 0)) break;
+      offset += 100;
+    }
+  }
+  function selectCourse(url) {
+    if (state.starting || state.pendingStart || !state.courses.some(c => c.url === url)) return;
+    if (state.selectedCourseUrl === url) return;
+    state.selectedCourseUrl = url; state.error = ''; scores.reset();
+    try { storage?.setItem(courseStorageKey(), url); } catch {}
+    if (state.session.connected) void loadScore();
+    void loadSelectedJob().catch(() => { if (!closed) state.syncError = '课程任务记录暂时无法更新。'; });
+  }
+  async function loadCourses() {
+    const id = ++courseRequest, identity = epoch, account = primaryId(state.session);
+    state.coursesLoading = true; state.coursesWarning = '';
     try {
-      const [session, courses] = await Promise.all([client.session(), client.workflowCourses()]);
+      const result = await client.workflowCourses();
+      if (closed || id !== courseRequest || identity !== epoch) return;
+      if (result.primaryId !== undefined && Number(result.primaryId) !== account) throw new Error('平台账号已切换，请刷新课程列表。');
+      if (result.connectedAt !== undefined && state.session.connectedAt && result.connectedAt !== state.session.connectedAt) throw new Error('平台账号已重新连接，请刷新课程列表。');
+      const previous = selectedCourse(state)?.url;
+      // On a temporary upstream failure retain only this account's previous
+      // list, clearly marked as stale, rather than losing a selected course.
+      if (!result.warning || !state.courses.length) state.courses = result.courses || [];
+      state.coursesWarning = result.warning || '';
+      let saved; try { saved = storage?.getItem(courseStorageKey()); } catch {}
+      const wanted = state.pendingStart?.courseUrl || state.selectedCourseUrl || saved;
+      state.selectedCourseUrl = state.courses.find(c => c.url === wanted)?.url || state.courses[0]?.url || '';
+      if (previous !== selectedCourse(state)?.url) scores.reset();
+      if (state.session.connected) void loadScore();
+    } catch (error) {
+      if (!closed && id === courseRequest && identity === epoch) state.coursesWarning = error.message || '已选课程读取失败，请刷新重试。';
+    } finally { if (!closed && id === courseRequest && identity === epoch) state.coursesLoading = false; }
+  }
+  async function initialize() {
+    state.loading = true; state.error = '';
+    try {
+      const session = await client.session();
       if (closed) return;
       setSession(session);
-      state.courses = courses.courses || [];
-      await refresh();
-      if (state.session.connected) void loadScore();
-      // A user's current platform account may have records beyond the first page.
-      if (!currentJob.value && primaryId(state.session)) {
-        const identity = epoch;
-        let offset = 100;
-        while (!closed && identity === epoch) {
-          const page = await client.workflowState(offset, 100);
-          if (closed || identity !== epoch) break;
-          (page.jobs || []).forEach(mergeJob);
-          if (currentJob.value || offset + 100 >= (page.pagination?.total || 0)) break;
-          offset += 100;
-        }
-      }
+      await Promise.all([loadCourses(), refresh()]);
+      await loadSelectedJob();
     } catch (e) { if (!closed) state.error = e.message; }
     finally { if (!closed) state.loading = false; }
     if (!closed && !stream) {
@@ -112,14 +147,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
   }
   async function connected(account) {
     setSession(account);
-    try {
-      const result = await client.workflowCourses();
-      if (!closed && result.courses?.length) state.courses = result.courses;
-    } catch (error) {
-      if (!closed) state.syncError = error.message || '课程信息暂时无法更新。';
-    }
-    await refresh();
-    void loadScore();
+    await Promise.all([loadCourses(), refresh()]);
   }
   async function disconnect() {
     await client.disconnect();
@@ -140,6 +168,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     if (state.starting || state.pendingStart) return;
     state.starting = true; state.error = '';
     const identity = epoch;
+    if (state.courses.some(c => c.url === courseUrl)) { state.selectedCourseUrl = courseUrl; scores.reset(); }
     savePending({ courseUrl, primaryId: primaryId(state.session), previous: state.jobs.map(j => j.id) });
     try {
       const result = await client.workflowStart(courseUrl, concurrency, options);
@@ -164,5 +193,5 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     finally { state.actionId = ''; }
   }
   function dispose() { closed = true; epoch++; refreshId++; scores.dispose(); stream?.close(); clearInterval(timer); changes.clear(); }
-  return { state, currentJob, subscribe: changes.subscribe, initialize, refresh, loadScore, watchScore: scores.watch, getJob, setSession, connected, disconnect, start, checkStart, control, mergeJob, dispose };
+  return { state, currentJob, subscribe: changes.subscribe, initialize, refresh, loadCourses, selectCourse, loadScore, watchScore: scores.watch, getJob, setSession, connected, disconnect, start, checkStart, control, mergeJob, dispose };
 }
