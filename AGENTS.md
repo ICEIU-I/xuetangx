@@ -29,3 +29,8 @@
 - Changes: remove the course picker frame, visible label, refresh button, explanations and appended class/status labels. Keep the accessible dropdown and the original platform course names.
 - Related fix: a pinned but unenrolled course no longer triggers automatic grade requests; the server also prevents legacy clients from probing its grade before enrollment is known.
 - Validation: 61 frontend tests, production build and PostgreSQL catalog/httpapi race passed; browser mock verified minimal markup, course switching/start/resume and desktop/mobile layouts. No live enrollment or task was started for testing.
+
+### 2026-09-21: Resume a whole-course task after answer-only completion
+
+- Changes: distinguish a completed homework/collector-only job from a full-course job; the homepage returns to Start and starts the four core modules without resubmitting completed answers. Active/paused full-course jobs and pending starts remain recoverable, and detail views label scoped completion as “this task completed”.
+- Validation: PostgreSQL full Go race, vet, 69 frontend tests and production build passed; no live platform writes were used.

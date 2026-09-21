@@ -2,14 +2,15 @@ import { observable } from '../../shared/observable.js';
 import { api, subscribeEvents } from '../../api.js';
 import { createCourseScore, emptyScore } from '../course-score/store.js';
 import { selectedCourse } from './courses.js';
-import { latestJob, primaryId } from './presentation.js';
+import { primaryId } from './presentation.js';
+import { homepageJob, startScope, matchesPendingScope } from './course-tasks.js';
 
 export function createWorkspace({ client = api, subscribe = subscribeEvents, storage = globalThis.sessionStorage, owner = '', pollMs = 5000 } = {}) {
   const changes = observable({ session: { connected: false, user: null }, jobs: [], courses: [], selectedCourseUrl: '', coursesLoading: false, coursesWarning: '', score: emptyScore(), rateLimits: {}, collectorLimits: {}, sharedCollectors: 0, loading: true, error: '', syncError: '', stream: 'connecting', starting: false, pendingStart: null, actionId: '', detailId: '' });
   const state = changes.state;
   const scores = createCourseScore({ state, client });
   const loadScore = scores.load;
-  const currentJob = { get value() { return latestJob(state.jobs, state.session, selectedCourse(state)); } };
+  const currentJob = { get value() { return homepageJob(state.jobs, state.session, selectedCourse(state)); } };
   let closed = false, epoch = 0, refreshId = 0, stream, timer, refreshing, courseRequest = 0, jobRequest = 0;
   const storageKey = `iceiu:pending-start:${owner}`;
   try { state.pendingStart = JSON.parse(storage?.getItem(storageKey) || 'null'); } catch {}
@@ -41,7 +42,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
   function recoverPending() {
     const pending = state.pendingStart;
     if (!pending) return null;
-    const job = state.jobs.find(j => Number(j.primaryId) === Number(pending.primaryId) && j.course.url === pending.courseUrl && (!pending.previous.includes(j.id) || ['queued', 'running', 'waiting_input'].includes(j.status)));
+    const job = state.jobs.find(j => Number(j.primaryId) === Number(pending.primaryId) && j.course.url === pending.courseUrl && matchesPendingScope(j, pending) && (!pending.previous.includes(j.id) || ['queued', 'running', 'waiting_input'].includes(j.status)));
     if (job) savePending(null);
     return job;
   }
@@ -169,7 +170,7 @@ export function createWorkspace({ client = api, subscribe = subscribeEvents, sto
     state.starting = true; state.error = '';
     const identity = epoch;
     if (state.courses.some(c => c.url === courseUrl)) { state.selectedCourseUrl = courseUrl; scores.reset(); }
-    savePending({ courseUrl, primaryId: primaryId(state.session), previous: state.jobs.map(j => j.id) });
+    savePending({ courseUrl, primaryId: primaryId(state.session), previous: state.jobs.map(j => j.id), ...startScope(options) });
     try {
       const result = await client.workflowStart(courseUrl, concurrency, options);
       if (closed || identity !== epoch) return;

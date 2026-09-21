@@ -6,7 +6,7 @@ import { finished, percent, summary, wizardStep, latestJob, actions, loginState 
 const course = { url: 'https://www.xuetangx.com/learn/space/ncepu0702bt1359/ncepu0702bt1359/31384299', classroomId: 31384299, title: '大学物理2' };
 const session = { connected: true, user: { user_id: 101, name: '学习者' } };
 const module = { status: 'running', total: 38, completed: 37, skipped: 0, wrongExisting: 0, failed: 1 };
-const job = (changes = {}) => ({ id: 'job-1', primaryId: 101, course, status: 'running', revision: 1, createdAt: 100, modules: { video: module }, ...changes });
+const job = (changes = {}) => ({ id: 'job-1', primaryId: 101, course, status: 'running', revision: 1, createdAt: 100, modules: { video: module, article: {status:'done',total:0}, discussion: {status:'done',total:0}, homework: {status:'done',total:0} }, ...changes });
 function harness(override = {}, initialSession = session, jobs = []) {
   let snapshot = { accounts: { primary: initialSession }, jobs, pagination: { total: jobs.length }, rateLimits: {} };
   let receive, handlers, disposed = false;
@@ -94,4 +94,22 @@ test('pending startup locks course switching and cannot create another course ta
 });
 test('selection finds the chosen course task outside the first page', async t=>{
  const other=job({id:'old-math',course:otherCourse,status:'done'});const w=harness({workflowCourses:async()=>({courses:[course,otherCourse]}),workflowState:async offset=>({accounts:{primary:session},jobs:offset===100?[other]:[job()],pagination:{total:101}})});t.after(w.dispose);await w.initialize();w.selectCourse(otherCourse.url);await new Promise(r=>setImmediate(r));assert.equal(w.currentJob.value.id,'old-math');
+});
+
+test('completed homework tool task returns homepage to start without mutating old results', async t=>{
+ const old=job({id:'homework-only',status:'done',modules:{homework:{status:'done',total:290,completed:290},collector:{status:'done',total:290,captured:290}}});
+ const before=JSON.stringify(old);let starts=0,options;
+ const w=harness({workflowStart:async(url,concurrency,extra)=>{starts++;options=extra;return {job:job({id:'whole-new',createdAt:200})};}},session,[old]);t.after(w.dispose);
+ await w.initialize();assert.equal(w.currentJob.value,null);assert.equal(wizardStep(w.state.session,w.currentJob.value),2);assert.equal(starts,0);
+ await w.start(course.url);assert.equal(starts,1);assert.equal(w.currentJob.value.id,'whole-new');assert.deepEqual(options,{});assert.equal(JSON.stringify(w.state.jobs.find(j=>j.id==='homework-only')),before);
+});
+test('late full task from an earlier page remains visible after a newer tool completion',async t=>{
+ const tool=job({id:'tool-new',createdAt:500,status:'done',modules:{homework:{status:'done',total:1,completed:1}}});
+ const whole=job({id:'whole-old',createdAt:100,status:'paused'});
+ const w=harness({workflowState:async offset=>({accounts:{primary:session},jobs:offset===100?[whole]:[tool],pagination:{total:101}})},session,[tool]);t.after(w.dispose);await w.initialize();assert.equal(w.currentJob.value.id,'whole-old');
+});
+test('interrupted whole-course start ignores a newly seen completed homework task',async t=>{
+ let w,calls=0;
+ w=harness({workflowStart:async()=>{calls++;w.setSnapshot({accounts:{primary:session},jobs:[job({id:'unrelated-tool',status:'done',modules:{homework:{status:'done',total:1,completed:1}}})]});throw new TypeError('offline');}});t.after(w.dispose);await w.initialize();await w.start(course.url);assert(w.state.pendingStart);assert.equal(w.currentJob.value,null);await w.start(course.url);assert.equal(calls,1);
+ w.receive({type:'workflow',job:job({id:'whole-actual'})});assert.equal(w.state.pendingStart,null);assert.equal(w.currentJob.value.id,'whole-actual');
 });
