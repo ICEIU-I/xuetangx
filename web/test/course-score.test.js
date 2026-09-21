@@ -74,3 +74,11 @@ test('task detail uses that task course, not the homepage selection', async () =
 test('no selected course means no grade request', async () => {
  const state={session:{connected:true,user:{user_id:101}},courses:[],score:emptyScore()};let count=0;const scores=createCourseScore({state,client:{workflowCourseScore:async()=>{count++;}}});await scores.load();assert.equal(count,0);scores.dispose();
 });
+
+test('an unselected pinned course never starts automatic grade polling', async () => {
+ const pinned={classroomId:31384299,url:'physics',fixed:true,enrolled:false};
+ const state={session:{connected:true,user:{user_id:101}},courses:[pinned],score:emptyScore(),jobs:[]};let count=0;
+ const scores=createCourseScore({state,client:{workflowCourseScore:async()=>{count++;return {primaryId:101,course:pinned,available:true,score:20};}}});
+ await scores.load();assert.equal(count,0);
+ state.jobs=[{id:'enrolled-physics',primaryId:101,course:pinned}];await scores.load();assert.equal(count,1);scores.dispose();
+});

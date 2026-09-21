@@ -29,19 +29,21 @@ func (s *Server) courseScore(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if !catalog.IsFixedCourse(target) {
-		// Resolve only this account's known enrolled classroom, not another
-		// user's catalog. The platform authorizes the actual grade read too.
-		err = s.Catalog.DB.Pool.QueryRow(ctx, `SELECT c.title,c.url FROM courses c JOIN account_courses ac ON ac.course_id=c.id
-		 WHERE ac.account_id=$1 AND c.classroom_id=$2 AND c.sign=$3 AND c.course_sign=$4`, account.ID, target.ClassroomID, target.Sign, target.CourseSign).Scan(&target.Title, &target.URL)
-		if err == pgx.ErrNoRows {
-			writeError(w, fault.New("ENROLLMENT_REQUIRED", "请刷新已选课程列表后再查询成绩"))
-			return
+	// A pinned option alone is not permission to probe its grade. Legacy
+	// clients can still request the default course, so guard this server-side.
+	err = s.Catalog.DB.Pool.QueryRow(ctx, `SELECT c.title,c.url FROM courses c JOIN account_courses ac ON ac.course_id=c.id
+	 WHERE ac.account_id=$1 AND c.classroom_id=$2 AND c.sign=$3 AND c.course_sign=$4`, account.ID, target.ClassroomID, target.Sign, target.CourseSign).Scan(&target.Title, &target.URL)
+	if err == pgx.ErrNoRows {
+		if catalog.IsFixedCourse(target) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "primaryId": account.UserID, "course": target, "available": false, "message": "未选课"})
+		} else {
+			writeError(w, fault.New("ENROLLMENT_REQUIRED", "请先加载已选课程"))
 		}
-		if err != nil {
-			writeError(w, err)
-			return
-		}
+		return
+	}
+	if err != nil {
+		writeError(w, err)
+		return
 	}
 	waiting := func(readyAt *int64) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "primaryId": account.UserID, "course": target, "available": false, "waiting": true, "retryAt": readyAt, "message": "平台暂时限制访问，稍后自动更新"})

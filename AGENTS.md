@@ -23,3 +23,9 @@
 - Changes: merge the current account's paginated enrolled courses with the optional fixed course; add a homepage course selector with account-scoped remembered selection, explicit refresh and query-failure feedback. Task start/recovery and grade reads follow the selected classroom without starting or enrolling on selection.
 - Fixes: grade refresh no longer replaces the entire catalog with one course. Late account/course responses are discarded, task details query their own course, and pending ambiguous starts lock selection. Only the fixed course retains the existing explicit-start free enrollment path.
 - Validation: isolated full PostgreSQL Go race tests, go vet, 60 frontend tests and production build passed; browser mock verified course switching, exact start URL, state recovery, pagination/error handling and desktop/mobile layout. Production release is maintained from the private repository; no operational data or credentials are included here.
+
+### 2026-09-21: Keep only the course dropdown and original titles
+
+- Changes: remove the course picker frame, visible label, refresh button, explanations and appended class/status labels. Keep the accessible dropdown and the original platform course names.
+- Related fix: a pinned but unenrolled course no longer triggers automatic grade requests; the server also prevents legacy clients from probing its grade before enrollment is known.
+- Validation: 61 frontend tests, production build and PostgreSQL catalog/httpapi race passed; browser mock verified minimal markup, course switching/start/resume and desktop/mobile layouts. No live enrollment or task was started for testing.

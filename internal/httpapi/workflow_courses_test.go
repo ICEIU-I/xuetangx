@@ -138,6 +138,13 @@ func TestWorkflowChoicesAndSelectedScoreAreAccountScoped(t *testing.T) {
 	if _, err := ac.Connect(ctx, second.User.ID, "primary", "csrftoken=test; sessionid=202"); err != nil {
 		t.Fatal(err)
 	}
+	// Merely pinning physics must not send an unauthorized grade request or
+	// start an account-wide cooldown before the enrolled list is loaded.
+	beforeCalls := len(transport.calls)
+	unpurchased := get(first, "/api/workflow/course-score")
+	if unpurchased.Code != 200 || !strings.Contains(unpurchased.Body.String(), `"available":false`) || len(transport.calls) != beforeCalls {
+		t.Fatal("unselected fixed course was probed")
+	}
 	list, warning := choices(first)
 	if len(list) != 2 || !list[0].Fixed || !list[0].Enrolled || list[1].ClassroomID != 101 || warning != "" {
 		t.Fatal(list, warning)
